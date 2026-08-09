@@ -88,7 +88,7 @@ Optional smoke test (library link + null geodesic conservation check):
 
 Disable with `-DSGL_BUILD_SMOKE_TEST=OFF`.
 
-## Next steps (for you)
+## Next steps
 
 Implement the SGL pipeline on top of `sgl_physics` — source models, ray
 generation, propagation wrappers, focal/image plane, and Einstein-ring
