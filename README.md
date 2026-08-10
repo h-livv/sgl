@@ -50,6 +50,7 @@ SGL/
 │   ├── problem/       # PropagationProblem composition
 │   ├── rays/          # Ray, RayEnsemble, RaySampler, ensemble propagation
 │   ├── arrivals/      # observer-plane crossing detection and RayArrival
+│   ├── imaging/       # Image and ImageFormation from PlaneArrival
 │   └── validation/
 ├── optics/            # placeholder
 ├── experiments/       # placeholder
@@ -167,7 +168,17 @@ std::vector<Arrivals::PlaneArrival> expanded =
     Arrivals::expand_azimuthally(arrivals, problem.image_plane(), /* azimuth_count */ 32);
 ```
 
-## Next steps
+## Einstein-ring image formation
 
-Phase 5 consumes `RayArrival[]`, maps `world_position` through
-`ImagePlane::to_plane_coordinates`, and accumulates intensity into an image.
+`sgl_imaging` bins `PlaneArrival` positions into a scientific `Image` using unit
+ray-count accumulation and max normalization. The canonical executable runs the full
+forward pipeline and writes CSV, PGM, and summary files.
+
+```bash
+cmake -B build -S .
+cmake --build build
+./build/sgl_canonical_sgl_image --output-dir outputs/sgl_forward
+```
+
+See [docs/SGL_FORWARD_PIPELINE.md](docs/SGL_FORWARD_PIPELINE.md) for prerequisites,
+CLI parameters, output locations, viewing guidance, and limitations.

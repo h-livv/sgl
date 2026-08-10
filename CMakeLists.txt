@@ -61,6 +61,17 @@ add_library(sgl_arrivals STATIC
 target_include_directories(sgl_arrivals PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
 target_link_libraries(sgl_arrivals PUBLIC sgl_rays)
 
+# Scientific image formation from plane arrivals.
+add_library(sgl_imaging STATIC
+    physics/imaging/Image.cpp
+    physics/imaging/ImageFormation.cpp
+)
+target_include_directories(sgl_imaging PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
+target_link_libraries(sgl_imaging PUBLIC sgl_arrivals)
+
+add_executable(sgl_canonical_sgl_image experiments/canonical_sgl_image.cpp)
+target_link_libraries(sgl_canonical_sgl_image PRIVATE sgl_imaging)
+
 option(SGL_BUILD_TESTS "Build the test suite" ON)
 if(SGL_BUILD_TESTS)
     enable_testing()
@@ -120,4 +131,12 @@ if(SGL_BUILD_TESTS)
     add_executable(sgl_azimuthal_expansion tests/azimuthal_expansion.cpp)
     target_link_libraries(sgl_azimuthal_expansion PRIVATE sgl_arrivals)
     add_test(NAME azimuthal_expansion COMMAND sgl_azimuthal_expansion)
+
+    add_executable(sgl_image_formation tests/image_formation.cpp)
+    target_link_libraries(sgl_image_formation PRIVATE sgl_imaging)
+    add_test(NAME image_formation COMMAND sgl_image_formation)
+
+    add_executable(sgl_canonical_image_pipeline tests/canonical_image_pipeline.cpp)
+    target_link_libraries(sgl_canonical_image_pipeline PRIVATE sgl_imaging)
+    add_test(NAME canonical_image_pipeline COMMAND sgl_canonical_image_pipeline)
 endif()
