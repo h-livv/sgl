@@ -48,6 +48,7 @@ SGL/
 │   ├── schwarzschild/ # Schwarzschild-specific composition + ICs
 │   ├── geometry/      # SGL physical entities (Lens, Source, Observer, ImagePlane)
 │   ├── problem/       # PropagationProblem composition
+│   ├── rays/          # Ray, RayEnsemble, RaySampler, ensemble propagation
 │   └── validation/
 ├── optics/            # placeholder
 ├── experiments/       # placeholder
@@ -120,8 +121,27 @@ Problem::PropagationProblem problem = Problem::make_aligned_problem(
     /* half_height */ 2.0);
 ```
 
+## Ray ensembles
+
+`sgl_rays` makes the ensemble the normal propagation path. A `RaySampler` turns a
+`PropagationProblem` into a `RayEnsemble`; `propagate_ensemble` runs every ray
+through the Phase 1 kernel with one shared set of physics objects. Outcomes are
+index-aligned with the ensemble, so `outcomes[i]` belongs to the ray whose `id` is
+`i`. A single ray is an ensemble of size one.
+
+```cpp
+Rays::RaySampler sampler(Rays::RaySamplingConfig{
+    .ray_count = 5, .min_impact_parameter = 2.7, .max_impact_parameter = 4.6});
+Rays::RayEnsemble ensemble = sampler.sample(problem);
+
+Schwarzschild::PropagationContext context(problem.lens().parameters, options);
+Rays::RayOutcomes outcomes = Rays::propagate_ensemble(
+    ensemble, context.dynamics(), context.termination(), settings,
+    Integration::RK4Integrator{}, context.correction());
+```
+
 ## Next steps
 
-Phase 3 introduces ray sampling on top of `sgl_geometry` and `sgl_physics` —
-linking both libraries in a new orchestration layer. Later phases add observer-
-plane arrivals and image formation.
+Phase 4 adds observer-plane arrivals on top of the per-ray outcomes, mapping each
+terminal chart state back to the world frame via `CoordinateChart::sph_to_cart`
+and `Geometry::from_chart_frame`. Phase 5 turns arrivals into an image.

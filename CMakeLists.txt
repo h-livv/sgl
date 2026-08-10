@@ -42,6 +42,15 @@ add_library(sgl_geometry STATIC
 target_include_directories(sgl_geometry PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
 target_link_libraries(sgl_geometry PUBLIC Eigen3::Eigen)
 
+# Ray ensembles. First layer permitted to link both the geometry and the kernel.
+add_library(sgl_rays STATIC
+    physics/rays/RayEnsemble.cpp
+    physics/rays/RaySampler.cpp
+    physics/rays/EnsemblePropagator.cpp
+)
+target_include_directories(sgl_rays PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
+target_link_libraries(sgl_rays PUBLIC sgl_geometry sgl_physics)
+
 option(SGL_BUILD_TESTS "Build the test suite" ON)
 if(SGL_BUILD_TESTS)
     enable_testing()
@@ -77,4 +86,16 @@ if(SGL_BUILD_TESTS)
     add_executable(sgl_canonical_problem tests/canonical_problem.cpp)
     target_link_libraries(sgl_canonical_problem PRIVATE sgl_geometry)
     add_test(NAME canonical_problem COMMAND sgl_canonical_problem)
+
+    add_executable(sgl_ray_ensemble tests/ray_ensemble.cpp)
+    target_link_libraries(sgl_ray_ensemble PRIVATE sgl_rays)
+    add_test(NAME ray_ensemble COMMAND sgl_ray_ensemble)
+
+    add_executable(sgl_ray_sampler tests/ray_sampler.cpp)
+    target_link_libraries(sgl_ray_sampler PRIVATE sgl_rays)
+    add_test(NAME ray_sampler COMMAND sgl_ray_sampler)
+
+    add_executable(sgl_ensemble_propagation tests/ensemble_propagation.cpp)
+    target_link_libraries(sgl_ensemble_propagation PRIVATE sgl_rays)
+    add_test(NAME ensemble_propagation COMMAND sgl_ensemble_propagation)
 endif()
