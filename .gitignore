@@ -1,5 +1,6 @@
 build/
 outputs/
 .venv/
+graphify-out/
 .DS_Store
 CMakeUserPresets.json
