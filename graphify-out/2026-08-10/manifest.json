@@ -1,0 +1,182 @@
+{
+  "physics/core/GeodesicState.h": {
+    "mtime": 1786300843.5270813,
+    "ast_hash": "10d1e2888731bd8ce11fdd8947fecfc0",
+    "semantic_hash": "10d1e2888731bd8ce11fdd8947fecfc0"
+  },
+  "physics/core/Metric.h": {
+    "mtime": 1786300844.0816274,
+    "ast_hash": "0fd461a93230f22df424fc586de0219f",
+    "semantic_hash": "0fd461a93230f22df424fc586de0219f"
+  },
+  "physics/core/MetricKind.h": {
+    "mtime": 1786300844.57164,
+    "ast_hash": "f2a91764bef80759614a36057dd3deda",
+    "semantic_hash": "f2a91764bef80759614a36057dd3deda"
+  },
+  "physics/core/PhysicalConstants.h": {
+    "mtime": 1786301176.213532,
+    "ast_hash": "9890704233e9f214de8a09f2f001135d",
+    "semantic_hash": "9890704233e9f214de8a09f2f001135d"
+  },
+  "physics/core/SchwarzschildParameters.h": {
+    "mtime": 1786300845.984077,
+    "ast_hash": "12e50fbe7a69bd4d5500f8473cb5357f",
+    "semantic_hash": "12e50fbe7a69bd4d5500f8473cb5357f"
+  },
+  "physics/core/Units.h": {
+    "mtime": 1786300847.1626956,
+    "ast_hash": "08b6205a65ca8617ea9b58b2ad38a6e9",
+    "semantic_hash": "08b6205a65ca8617ea9b58b2ad38a6e9"
+  },
+  "physics/geodesics/DynamicsModel.h": {
+    "mtime": 1786300857.5723166,
+    "ast_hash": "7a01f5f74f3b05a923b9c7d75d9fdc97",
+    "semantic_hash": "7a01f5f74f3b05a923b9c7d75d9fdc97"
+  },
+  "physics/geodesics/GeodesicDynamics.cpp": {
+    "mtime": 1786300859.8140416,
+    "ast_hash": "adea2c68ecbce2301c7d14e273d7a078",
+    "semantic_hash": "adea2c68ecbce2301c7d14e273d7a078"
+  },
+  "physics/geodesics/GeodesicDynamics.h": {
+    "mtime": 1786300859.142636,
+    "ast_hash": "38ca94608680f559a5a6cca902de2460",
+    "semantic_hash": "38ca94608680f559a5a6cca902de2460"
+  },
+  "physics/integrators/Integrator.h": {
+    "mtime": 1786300860.5019448,
+    "ast_hash": "8dc81627b89aba21697e68cedeb5734d",
+    "semantic_hash": "8dc81627b89aba21697e68cedeb5734d"
+  },
+  "physics/integrators/RK4Integrator.cpp": {
+    "mtime": 1786300863.7068946,
+    "ast_hash": "cd3d8384518dff4c0cf472a7fe6a335d",
+    "semantic_hash": "cd3d8384518dff4c0cf472a7fe6a335d"
+  },
+  "physics/integrators/RK4Integrator.h": {
+    "mtime": 1786300862.3044944,
+    "ast_hash": "1fa2e36173117ede065c3ebe58d6987b",
+    "semantic_hash": "1fa2e36173117ede065c3ebe58d6987b"
+  },
+  "physics/metrics/CoordinateChart.cpp": {
+    "mtime": 1786300854.7981298,
+    "ast_hash": "891769cec6c6f89dbe83fbfc140d0980",
+    "semantic_hash": "891769cec6c6f89dbe83fbfc140d0980"
+  },
+  "physics/metrics/CoordinateChart.h": {
+    "mtime": 1786300854.5881271,
+    "ast_hash": "ee7f4600527499cf5816343c55890232",
+    "semantic_hash": "ee7f4600527499cf5816343c55890232"
+  },
+  "physics/metrics/SchwarzschildMetric.cpp": {
+    "mtime": 1786300850.7801123,
+    "ast_hash": "2026e5b42ecbb55ad957ca69b11eb49f",
+    "semantic_hash": "2026e5b42ecbb55ad957ca69b11eb49f"
+  },
+  "physics/metrics/SchwarzschildMetric.h": {
+    "mtime": 1786300849.9620233,
+    "ast_hash": "dbf6e8cf3733da9c5750fc7cee910d76",
+    "semantic_hash": "dbf6e8cf3733da9c5750fc7cee910d76"
+  },
+  "physics/simulation/SimulationConfig.h": {
+    "mtime": 1786300888.8589692,
+    "ast_hash": "b87a6b115c9021c8fec97f01fe7ce85f",
+    "semantic_hash": "b87a6b115c9021c8fec97f01fe7ce85f"
+  },
+  "physics/simulation/SimulationPipeline.cpp": {
+    "mtime": 1786300891.8402915,
+    "ast_hash": "61a379a6cc9cfdf4fb914bb6cc0901b7",
+    "semantic_hash": "61a379a6cc9cfdf4fb914bb6cc0901b7"
+  },
+  "physics/simulation/TerminationPolicy.cpp": {
+    "mtime": 1786300865.905994,
+    "ast_hash": "c3ab0ffe0b477826132f651b155830a5",
+    "semantic_hash": "c3ab0ffe0b477826132f651b155830a5"
+  },
+  "physics/simulation/TerminationPolicy.h": {
+    "mtime": 1786300864.5671723,
+    "ast_hash": "3698ee2098037468b5c41836c807a490",
+    "semantic_hash": "3698ee2098037468b5c41836c807a490"
+  },
+  "physics/simulation/TrajectorySolver.cpp": {
+    "mtime": 1786300868.7099717,
+    "ast_hash": "6b0b7d7ff540c43667d65484c2bf3660",
+    "semantic_hash": "6b0b7d7ff540c43667d65484c2bf3660"
+  },
+  "physics/simulation/TrajectorySolver.h": {
+    "mtime": 1786300868.4421146,
+    "ast_hash": "b9f93b375c842b3344fba96300336a3b",
+    "semantic_hash": "b9f93b375c842b3344fba96300336a3b"
+  },
+  "physics/simulation/initial_conditions/InitialConditions.h": {
+    "mtime": 1786300872.881566,
+    "ast_hash": "d7181d6d303a725fb1428c2bb48beff9",
+    "semantic_hash": "d7181d6d303a725fb1428c2bb48beff9"
+  },
+  "physics/simulation/initial_conditions/SchwarzschildInitialStateBuilders.cpp": {
+    "mtime": 1786300882.552749,
+    "ast_hash": "4de8f953cc24d29560e0c7f0887d8202",
+    "semantic_hash": "4de8f953cc24d29560e0c7f0887d8202"
+  },
+  "physics/simulation/initial_conditions/SchwarzschildInitialStateBuilders.h": {
+    "mtime": 1786300879.4765012,
+    "ast_hash": "02da8825febcc4747f4f3ff591df3996",
+    "semantic_hash": "02da8825febcc4747f4f3ff591df3996"
+  },
+  "physics/validation/observables/SchwarzschildObservables.h": {
+    "mtime": 1786300892.0491946,
+    "ast_hash": "71da057c7c780575bd41f7431d1241d1",
+    "semantic_hash": "71da057c7c780575bd41f7431d1241d1"
+  },
+  "tests/null_geodesic_smoke.cpp": {
+    "mtime": 1786301173.751583,
+    "ast_hash": "1054087389b8350397d2e37449d3b5e7",
+    "semantic_hash": "1054087389b8350397d2e37449d3b5e7"
+  },
+  "vcpkg.json": {
+    "mtime": 1786300959.8754568,
+    "ast_hash": "5d351c37f78ebb98ed15b4cedad144ab",
+    "semantic_hash": "5d351c37f78ebb98ed15b4cedad144ab"
+  },
+  "CMakeLists.txt": {
+    "mtime": 1786301167.8306732,
+    "ast_hash": "115e4a2d967e085ad5b2a814f3eedd10",
+    "semantic_hash": "115e4a2d967e085ad5b2a814f3eedd10"
+  },
+  "README.md": {
+    "mtime": 1786302239.5621088,
+    "ast_hash": "b8adc636bf1d99ed1fba5135c0ec10ef",
+    "semantic_hash": "b8adc636bf1d99ed1fba5135c0ec10ef"
+  },
+  "notes/EXTRACTION.md": {
+    "mtime": 1786301176.095587,
+    "ast_hash": "6cd9d053661c046294ceceb92be91a74",
+    "semantic_hash": "6cd9d053661c046294ceceb92be91a74"
+  },
+  "notes/ARCHITECTURE_RECONSTRUCTION.md": {
+    "mtime": 1786380678.233945,
+    "ast_hash": "39790a6e0f58e1209c855ce00d9785b7",
+    "semantic_hash": ""
+  },
+  "notes/SGL_ARCHITECTURAL_STRESS_TEST.md": {
+    "mtime": 1786381374.4745216,
+    "ast_hash": "97e3ff8c45bae2c199767123b27b0a24",
+    "semantic_hash": ""
+  },
+  "notes/SGL_ARCHITECTURE_RECONSTRUCTION.md": {
+    "mtime": 1786381010.8154428,
+    "ast_hash": "0ad009d958917fc2ca556d13dc8d1c45",
+    "semantic_hash": ""
+  },
+  "notes/SGL_FUTURE_REQUIREMENTS_MAP.md": {
+    "mtime": 1786381937.022286,
+    "ast_hash": "0693b5ca552bcf0b864c7cbb188d1d77",
+    "semantic_hash": ""
+  },
+  "notes/SGL_TARGET_ARCHITECTURE.md": {
+    "mtime": 1786382449.5330672,
+    "ast_hash": "1287839c59ac0457b7938329bb2bb2bb",
+    "semantic_hash": ""
+  }
+}
