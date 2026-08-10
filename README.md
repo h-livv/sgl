@@ -46,6 +46,8 @@ SGL/
 │   ├── integrators/
 │   ├── propagation/   # generic single-ray propagation kernel
 │   ├── schwarzschild/ # Schwarzschild-specific composition + ICs
+│   ├── geometry/      # SGL physical entities (Lens, Source, Observer, ImagePlane)
+│   ├── problem/       # PropagationProblem composition
 │   └── validation/
 ├── optics/            # placeholder
 ├── experiments/       # placeholder
@@ -98,8 +100,28 @@ Propagation::PropagationOutcome out = Propagation::propagate(
 
 Disable tests with `-DSGL_BUILD_TESTS=OFF`.
 
+## Problem geometry
+
+Phase 2 adds `sgl_geometry`, a library independent of the numerical kernel. It
+describes the physical SGL setup in geometrized units (`G = c = 1`):
+
+- optical axis = `+Z`
+- lens at the origin
+- observer at `(0, 0, +D)`, looking toward `-Z`
+- point source at `(0, 0, -S)`
+- image-plane normal = `+Z` (along incoming light)
+
+```cpp
+Problem::PropagationProblem problem = Problem::make_aligned_problem(
+    Spacetime::SchwarzschildParameters{.rs = 1.0},
+    /* source_distance */ 100.0,
+    /* observer_distance */ 50.0,
+    /* half_width */ 2.0,
+    /* half_height */ 2.0);
+```
+
 ## Next steps
 
-Implement the SGL pipeline on top of `sgl_physics` — source models, ray
-generation, propagation wrappers, focal/image plane, and Einstein-ring
-experiments — under the placeholder directories above.
+Phase 3 introduces ray sampling on top of `sgl_geometry` and `sgl_physics` —
+linking both libraries in a new orchestration layer. Later phases add observer-
+plane arrivals and image formation.

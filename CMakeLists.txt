@@ -32,7 +32,17 @@ target_include_directories(sgl_physics
 )
 target_link_libraries(sgl_physics PUBLIC Eigen3::Eigen)
 
-option(SGL_BUILD_TESTS "Build the Phase 1 test suite" ON)
+# SGL problem geometry. Deliberately independent of the numerical kernel:
+# this target links Eigen only and must never link sgl_physics.
+add_library(sgl_geometry STATIC
+    physics/geometry/Observer.cpp
+    physics/geometry/ImagePlane.cpp
+    physics/problem/PropagationProblem.cpp
+)
+target_include_directories(sgl_geometry PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
+target_link_libraries(sgl_geometry PUBLIC Eigen3::Eigen)
+
+option(SGL_BUILD_TESTS "Build the test suite" ON)
 if(SGL_BUILD_TESTS)
     enable_testing()
 
@@ -55,4 +65,16 @@ if(SGL_BUILD_TESTS)
     add_executable(sgl_ensemble_readiness tests/ensemble_readiness.cpp)
     target_link_libraries(sgl_ensemble_readiness PRIVATE sgl_physics)
     add_test(NAME ensemble_readiness COMMAND sgl_ensemble_readiness)
+
+    add_executable(sgl_geometry_frames tests/geometry_frames.cpp)
+    target_link_libraries(sgl_geometry_frames PRIVATE sgl_geometry)
+    add_test(NAME geometry_frames COMMAND sgl_geometry_frames)
+
+    add_executable(sgl_image_plane tests/image_plane.cpp)
+    target_link_libraries(sgl_image_plane PRIVATE sgl_geometry)
+    add_test(NAME image_plane COMMAND sgl_image_plane)
+
+    add_executable(sgl_canonical_problem tests/canonical_problem.cpp)
+    target_link_libraries(sgl_canonical_problem PRIVATE sgl_geometry)
+    add_test(NAME canonical_problem COMMAND sgl_canonical_problem)
 endif()
