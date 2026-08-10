@@ -156,6 +156,17 @@ std::vector<Arrivals::RayArrival> arrivals = Arrivals::collect_arrivals(
     Integration::RK4Integrator{}, context.correction());
 ```
 
+The equatorial ray family lands on `v = 0` because `RaySampler` varies only impact
+parameter. `Arrivals::expand_azimuthally` turns that 1D locus into a rotationally
+symmetric 2D arrival set by exact spherical symmetry about the optical axis: each
+arrival at plane coordinate `(u, 0)` is copied to `(u cos ψ, u sin ψ)` for
+`ψ_k = 2π k / N`. No additional geodesics are integrated.
+
+```cpp
+std::vector<Arrivals::PlaneArrival> expanded =
+    Arrivals::expand_azimuthally(arrivals, problem.image_plane(), /* azimuth_count */ 32);
+```
+
 ## Next steps
 
 Phase 5 consumes `RayArrival[]`, maps `world_position` through

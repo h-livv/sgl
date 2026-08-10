@@ -56,6 +56,7 @@ add_library(sgl_arrivals STATIC
     physics/arrivals/ChartMapping.cpp
     physics/arrivals/PlaneCrossingTermination.cpp
     physics/arrivals/ArrivalCollector.cpp
+    physics/arrivals/AzimuthalExpansion.cpp
 )
 target_include_directories(sgl_arrivals PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
 target_link_libraries(sgl_arrivals PUBLIC sgl_rays)
@@ -115,4 +116,8 @@ if(SGL_BUILD_TESTS)
     add_executable(sgl_observer_plane_arrivals tests/observer_plane_arrivals.cpp)
     target_link_libraries(sgl_observer_plane_arrivals PRIVATE sgl_arrivals)
     add_test(NAME observer_plane_arrivals COMMAND sgl_observer_plane_arrivals)
+
+    add_executable(sgl_azimuthal_expansion tests/azimuthal_expansion.cpp)
+    target_link_libraries(sgl_azimuthal_expansion PRIVATE sgl_arrivals)
+    add_test(NAME azimuthal_expansion COMMAND sgl_azimuthal_expansion)
 endif()
