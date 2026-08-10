@@ -18,22 +18,41 @@ set(SGL_PHYSICS_SOURCES
     physics/metrics/SchwarzschildMetric.cpp
     physics/geodesics/GeodesicDynamics.cpp
     physics/integrators/RK4Integrator.cpp
-    physics/simulation/TrajectorySolver.cpp
-    physics/simulation/TerminationPolicy.cpp
-    physics/simulation/SimulationPipeline.cpp
-    physics/simulation/initial_conditions/SchwarzschildInitialStateBuilders.cpp
+    physics/propagation/Propagator.cpp
+    physics/propagation/TerminationPolicy.cpp
+    physics/schwarzschild/InitialStates.cpp
+    physics/schwarzschild/NullConstraint.cpp
+    physics/schwarzschild/PropagationContext.cpp
 )
 
 add_library(sgl_physics STATIC ${SGL_PHYSICS_SOURCES})
 target_include_directories(sgl_physics
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/physics
-        ${CMAKE_CURRENT_SOURCE_DIR}/physics/core
 )
 target_link_libraries(sgl_physics PUBLIC Eigen3::Eigen)
 
-option(SGL_BUILD_SMOKE_TEST "Build a minimal null-geodesic smoke test" ON)
-if(SGL_BUILD_SMOKE_TEST)
-    add_executable(sgl_null_smoke tests/null_geodesic_smoke.cpp)
-    target_link_libraries(sgl_null_smoke PRIVATE sgl_physics)
+option(SGL_BUILD_TESTS "Build the Phase 1 test suite" ON)
+if(SGL_BUILD_TESTS)
+    enable_testing()
+
+    add_executable(sgl_null_scatter_regression tests/null_scatter_regression.cpp)
+    target_link_libraries(sgl_null_scatter_regression PRIVATE sgl_physics)
+    add_test(NAME null_scatter_regression COMMAND sgl_null_scatter_regression)
+
+    add_executable(sgl_schwarzschild_scenarios tests/schwarzschild_scenarios.cpp)
+    target_link_libraries(sgl_schwarzschild_scenarios PRIVATE sgl_physics)
+    add_test(NAME schwarzschild_scenarios COMMAND sgl_schwarzschild_scenarios)
+
+    add_executable(sgl_null_constraint tests/null_constraint.cpp)
+    target_link_libraries(sgl_null_constraint PRIVATE sgl_physics)
+    add_test(NAME null_constraint COMMAND sgl_null_constraint)
+
+    add_executable(sgl_propagator_contract tests/propagator_contract.cpp)
+    target_link_libraries(sgl_propagator_contract PRIVATE sgl_physics)
+    add_test(NAME propagator_contract COMMAND sgl_propagator_contract)
+
+    add_executable(sgl_ensemble_readiness tests/ensemble_readiness.cpp)
+    target_link_libraries(sgl_ensemble_readiness PRIVATE sgl_physics)
+    add_test(NAME ensemble_readiness COMMAND sgl_ensemble_readiness)
 endif()

@@ -1,6 +1,11 @@
 #pragma once
 
-namespace Simulation {
+namespace Schwarzschild {
+
+enum class GeodesicKind {
+    Timelike,
+    Null,
+};
 
 struct BoundOrbitInitialConditions {
     double t0 = 0.0;
@@ -39,4 +44,4 @@ struct CustomInitialConditions {
     double vphi = 0.0;
 };
 
-} // namespace Simulation
+} // namespace Schwarzschild

@@ -14,6 +14,4 @@ public:
     virtual State step(const State& state, double dt, const DerivativeFunc& derivative) const = 0;
 };
 
-const Integrator& default_integrator();
-
 } // namespace Integration

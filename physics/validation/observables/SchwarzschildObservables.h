@@ -50,4 +50,8 @@ inline double critical_impact_parameter(double rs) {
     return (3.0 * std::sqrt(3.0) / 2.0) * rs;
 }
 
+inline double photon_sphere_radius(double rs) {
+    return 1.5 * rs;
+}
+
 } // namespace Physics::Observables

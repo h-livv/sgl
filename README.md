@@ -14,8 +14,9 @@ A Schwarzschild-focused CPU science library:
 - spacetime / metric interface
 - Schwarzschild geometry (Christoffel symbols)
 - geodesic equation + RK4 integration
-- trajectory solving and termination policies
-- null / timelike initial-condition builders
+- low-level propagation API (`propagate`, `propagate_recorded`)
+- termination policies and integration settings split from model setup
+- Schwarzschild composition context and null/timelike initial-state builders
 - conserved-quantity observables
 - physical constants / geometrized-unit conventions
 
@@ -43,13 +44,14 @@ SGL/
 │   ├── metrics/
 │   ├── geodesics/
 │   ├── integrators/
-│   ├── simulation/
+│   ├── propagation/   # generic single-ray propagation kernel
+│   ├── schwarzschild/ # Schwarzschild-specific composition + ICs
 │   └── validation/
 ├── optics/            # placeholder
 ├── experiments/       # placeholder
 ├── analysis/          # placeholder
 ├── visualization/     # placeholder
-├── tests/             # optional library smoke test
+├── tests/             # ctest-registered regression/contract tests
 ├── CMakeLists.txt
 ├── vcpkg.json
 └── README.md
@@ -63,7 +65,8 @@ SGL/
 | `physics/metrics/SchwarzschildMetric`, `CoordinateChart` | `physics/metrics/` |
 | `physics/geodesics/*` | `physics/geodesics/` |
 | `physics/integrators/*` | `physics/integrators/` |
-| `physics/simulation/*` (Schwarzschild) | `physics/simulation/` |
+| `physics/simulation/TrajectorySolver`, `TerminationPolicy` | `physics/propagation/` |
+| `physics/simulation/SimulationPipeline`, Schwarzschild initial builders | `physics/schwarzschild/` |
 | `physics/validation/observables/SchwarzschildObservables` | `physics/validation/observables/` |
 
 Kerr, `realtime/`, and the visualization/viewer stack were not extracted.
@@ -78,15 +81,22 @@ Kerr, `realtime/`, and the visualization/viewer stack were not extracted.
 ```bash
 cmake -B build -S .
 cmake --build build
+ctest --test-dir build --output-on-failure
 ```
 
-Optional smoke test (library link + null geodesic conservation check):
+## Minimal usage
 
-```bash
-./build/sgl_null_smoke
+```cpp
+Spacetime::SchwarzschildParameters params{.rs = 1.0};
+Schwarzschild::PropagationContext context(params, {});
+State initial = Schwarzschild::build_null_scatter(params, Schwarzschild::NullScatterInitialConditions{});
+Propagation::IntegrationSettings settings{.step_size = 0.001, .max_steps = 50000};
+Propagation::PropagationOutcome out = Propagation::propagate(
+    initial, context.dynamics(), context.termination(), settings, Integration::RK4Integrator{},
+    context.correction());
 ```
 
-Disable with `-DSGL_BUILD_SMOKE_TEST=OFF`.
+Disable tests with `-DSGL_BUILD_TESTS=OFF`.
 
 ## Next steps
 

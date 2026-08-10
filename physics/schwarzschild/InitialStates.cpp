@@ -1,15 +1,13 @@
-#include "SchwarzschildInitialStateBuilders.h"
-
-#include "../SimulationConfig.h"
+#include "InitialStates.h"
 
 #include <cmath>
 #include <stdexcept>
 
-namespace Simulation::InitialStateBuilders {
+namespace Schwarzschild {
 
-State build_bound_orbit(const Spacetime::SchwarzschildParameters& metric,
+State build_bound_orbit(const Spacetime::SchwarzschildParameters& parameters,
                         const BoundOrbitInitialConditions& initial) {
-    const double rs = metric.mass;
+    const double rs = parameters.rs;
     const double r0 = initial.r0;
     const double f = 1.0 - rs / r0;
     if (f <= 0.0) {
@@ -25,9 +23,9 @@ State build_bound_orbit(const Spacetime::SchwarzschildParameters& metric,
                  Eigen::Vector4d(vt, initial.vr, initial.vtheta, initial.vphi));
 }
 
-State build_radial_freefall(const Spacetime::SchwarzschildParameters& metric,
+State build_radial_freefall(const Spacetime::SchwarzschildParameters& parameters,
                             const RadialFreefallInitialConditions& initial) {
-    const double rs = metric.mass;
+    const double rs = parameters.rs;
     const double r0 = initial.r0;
     const double f = 1.0 - rs / r0;
     if (f <= 0.0) {
@@ -39,9 +37,9 @@ State build_radial_freefall(const Spacetime::SchwarzschildParameters& metric,
                  Eigen::Vector4d(vt, vr, 0.0, 0.0));
 }
 
-State build_null_scatter(const Spacetime::SchwarzschildParameters& metric,
+State build_null_scatter(const Spacetime::SchwarzschildParameters& parameters,
                          const NullScatterInitialConditions& initial) {
-    const double rs = metric.mass;
+    const double rs = parameters.rs;
     const double r0 = initial.r0;
     const double f = 1.0 - rs / r0;
     if (f <= 0.0) {
@@ -66,10 +64,10 @@ State build_null_scatter(const Spacetime::SchwarzschildParameters& metric,
                  Eigen::Vector4d(vt, vr, 0.0, vph));
 }
 
-State build_custom(const SimulationConfig& config, const Spacetime::SchwarzschildParameters& metric,
-                   const CustomInitialConditions& initial) {
+State build_custom(const Spacetime::SchwarzschildParameters& parameters,
+                   const CustomInitialConditions& initial, GeodesicKind geodesic) {
     double vt = initial.vt;
-    const double rs = metric.mass;
+    const double rs = parameters.rs;
     const double r0 = initial.r0;
     const double f = 1.0 - rs / r0;
     if (f <= 0.0) {
@@ -78,7 +76,7 @@ State build_custom(const SimulationConfig& config, const Spacetime::Schwarzschil
 
     if (vt == 0.0) {
         const double sin_theta = std::sin(initial.theta0);
-        if (config.geodesic == GeodesicKind::Null) {
+        if (geodesic == GeodesicKind::Null) {
             const double term_r = (initial.vr * initial.vr) / f;
             const double term_theta = r0 * r0 * initial.vtheta * initial.vtheta;
             const double term_phi = r0 * r0 * sin_theta * sin_theta * initial.vphi * initial.vphi;
@@ -96,4 +94,4 @@ State build_custom(const SimulationConfig& config, const Spacetime::Schwarzschil
                  Eigen::Vector4d(vt, initial.vr, initial.vtheta, initial.vphi));
 }
 
-} // namespace Simulation::InitialStateBuilders
+} // namespace Schwarzschild
