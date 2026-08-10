@@ -51,6 +51,15 @@ add_library(sgl_rays STATIC
 target_include_directories(sgl_rays PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
 target_link_libraries(sgl_rays PUBLIC sgl_geometry sgl_physics)
 
+# Observer-plane arrivals. Consumes the ensemble path; the kernel never depends on it.
+add_library(sgl_arrivals STATIC
+    physics/arrivals/ChartMapping.cpp
+    physics/arrivals/PlaneCrossingTermination.cpp
+    physics/arrivals/ArrivalCollector.cpp
+)
+target_include_directories(sgl_arrivals PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
+target_link_libraries(sgl_arrivals PUBLIC sgl_rays)
+
 option(SGL_BUILD_TESTS "Build the test suite" ON)
 if(SGL_BUILD_TESTS)
     enable_testing()
@@ -98,4 +107,12 @@ if(SGL_BUILD_TESTS)
     add_executable(sgl_ensemble_propagation tests/ensemble_propagation.cpp)
     target_link_libraries(sgl_ensemble_propagation PRIVATE sgl_rays)
     add_test(NAME ensemble_propagation COMMAND sgl_ensemble_propagation)
+
+    add_executable(sgl_arrival_localization tests/arrival_localization.cpp)
+    target_link_libraries(sgl_arrival_localization PRIVATE sgl_arrivals)
+    add_test(NAME arrival_localization COMMAND sgl_arrival_localization)
+
+    add_executable(sgl_observer_plane_arrivals tests/observer_plane_arrivals.cpp)
+    target_link_libraries(sgl_observer_plane_arrivals PRIVATE sgl_arrivals)
+    add_test(NAME observer_plane_arrivals COMMAND sgl_observer_plane_arrivals)
 endif()

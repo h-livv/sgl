@@ -49,6 +49,7 @@ SGL/
 │   ├── geometry/      # SGL physical entities (Lens, Source, Observer, ImagePlane)
 │   ├── problem/       # PropagationProblem composition
 │   ├── rays/          # Ray, RayEnsemble, RaySampler, ensemble propagation
+│   ├── arrivals/      # observer-plane crossing detection and RayArrival
 │   └── validation/
 ├── optics/            # placeholder
 ├── experiments/       # placeholder
@@ -140,8 +141,22 @@ Rays::RayOutcomes outcomes = Rays::propagate_ensemble(
     Integration::RK4Integrator{}, context.correction());
 ```
 
+## Observer-plane arrivals
+
+`sgl_arrivals` detects the first crossing of the Phase 2 `ImagePlane` using
+`signed_distance >= 0` (normal `+Z`, along incoming light). The plane is treated
+as unbounded for detection; linear interpolation between the two bracketing
+integration states localizes the intersection in world space.
+
+```cpp
+Propagation::RadiusBoundTermination fallback(params.rs * 1.0001,
+    std::numeric_limits<double>::infinity());
+std::vector<Arrivals::RayArrival> arrivals = Arrivals::collect_arrivals(
+    ensemble, problem, context.dynamics(), fallback, settings,
+    Integration::RK4Integrator{}, context.correction());
+```
+
 ## Next steps
 
-Phase 4 adds observer-plane arrivals on top of the per-ray outcomes, mapping each
-terminal chart state back to the world frame via `CoordinateChart::sph_to_cart`
-and `Geometry::from_chart_frame`. Phase 5 turns arrivals into an image.
+Phase 5 consumes `RayArrival[]`, maps `world_position` through
+`ImagePlane::to_plane_coordinates`, and accumulates intensity into an image.

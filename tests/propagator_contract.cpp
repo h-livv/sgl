@@ -70,7 +70,8 @@ int main() {
 
     const Propagation::PropagationOutcome basic =
         Propagation::propagate(initial, dynamics, never_terminate, settings, integrator);
-    auto [final_state, steps_taken, status] = basic;
+    auto [final_state, steps_taken, status, previous_state] = basic;
+    (void)previous_state;
     CHECK(steps_taken == 1000, "step count mismatch");
     CHECK(status == Propagation::PropagationStatus::StepBudgetExhausted, "status mismatch");
     CHECK_CLOSE(final_state.X[0], initial.X[0] + 10.0, 1e-12, "x0 propagation mismatch");

@@ -22,6 +22,7 @@ PropagationOutcome run(const State& initial_state, const Dynamics::DynamicsModel
     validate_settings(settings);
 
     State current = initial_state;
+    State previous = initial_state;
     if (path != nullptr) {
         path->reserve(path->size() + static_cast<std::size_t>(settings.max_steps) + 1);
         path->push_back(current);
@@ -40,6 +41,7 @@ PropagationOutcome run(const State& initial_state, const Dynamics::DynamicsModel
             break;
         }
 
+        previous = current;
         current = integrator.step(current, settings.step_size, derivative);
         if (correction) {
             correction(current, i);
@@ -50,7 +52,10 @@ PropagationOutcome run(const State& initial_state, const Dynamics::DynamicsModel
         steps_taken = i + 1;
     }
 
-    return PropagationOutcome{current, steps_taken, status};
+    return PropagationOutcome{.final_state = current,
+                              .steps_taken = steps_taken,
+                              .status = status,
+                              .previous_state = previous};
 }
 
 } // namespace
