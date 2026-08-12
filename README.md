@@ -46,5 +46,7 @@ ctest --test-dir build --output-on-failure
 ./build/sgl_canonical_sgl_image --output-dir outputs/sgl_forward
 ```
 
-See [`docs/SGL_FORWARD_PIPELINE.md`](docs/SGL_FORWARD_PIPELINE.md) for the
-complete implementation and data-flow documentation.
+Start with [`docs/HOW_THE_EINSTEIN_RING_IS_FORMED.md`](docs/HOW_THE_EINSTEIN_RING_IS_FORMED.md)
+for the ray model and image-formation intuition. See
+[`docs/SGL_FORWARD_PIPELINE.md`](docs/SGL_FORWARD_PIPELINE.md) for the full
+implementation and data-flow documentation.
