@@ -36,21 +36,22 @@ TEST_NAME = "weak_field_validation"
 # Hard-coded in the C++ executable; documented here for the analytical reference.
 RS = 1.0
 
-# Large distances → weak-field regime (rs << D, S).
-OBSERVER_AXIAL_DISTANCE = 1000.0
-SOURCE_DISTANCES = [1000, 2000, 5000, "inf"]
-LAUNCH_PLANE_FOR_INF = 1000.0  # parallel-ray launch plane distance
+# Large-ish distances → exploratory weak-field regime (rs << D, S).
+# Kept smaller than production weak-field runs so geodesic path length stays cheap.
+OBSERVER_AXIAL_DISTANCE = 200.0
+SOURCE_DISTANCES = [200, 500, "inf"]
+LAUNCH_PLANE_FOR_INF = 200.0  # parallel-ray launch plane distance
 
-# Reduced exploratory numerics. Extent sized for expected rho ~ R_E/D ~ 0.03–0.05.
+# Reduced exploratory numerics. Expected rho ~ R_E/D ~ 0.07–0.10.
 BASE_PARAMS = {
-    "ray-count": 41,
-    "azimuth-count": 64,
-    "resolution": 64,
-    "extent": 0.2,
-    "b-min": 10.0,
-    "b-max": 80.0,
-    "step-size": 0.02,
-    "max-steps": 300000,
+    "ray-count": 21,
+    "azimuth-count": 32,
+    "resolution": 32,
+    "extent": 0.3,
+    "b-min": 8.0,
+    "b-max": 40.0,
+    "step-size": 0.05,
+    "max-steps": 100000,
     "observer-axial-distance": OBSERVER_AXIAL_DISTANCE,
     "observer-distance": 0.0,
     "observer-hit-tolerance": 1e-6,
