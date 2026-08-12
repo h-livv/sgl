@@ -137,6 +137,10 @@ Defined in `experiments/canonical_sgl_image.cpp` (`CliOptions`):
 | `--b-max` | `11.6` | Maximum impact parameter |
 | `--step-size` | `0.01` | Affine-parameter RK4 step |
 | `--max-steps` | `300000` | Per-ray step budget |
+| `--source-distance` | `30.0` | Source distance from the lens along −Z |
+| `--observer-axial-distance` | `30.0` | Observer distance from the lens along the optical axis (+Z) |
+| `--observer-distance` | `0.0` | Perpendicular distance from the focal line / optical axis (along +X; 0 = on-axis) |
+| `--ray-model` | `point` | `point` = fan from a point source; `parallel` = parallel beam on the launch plane at `z = -source-distance` |
 | `--help` | — | Print usage |
 
 ### Fixed physics (not on CLI)
@@ -144,14 +148,64 @@ Defined in `experiments/canonical_sgl_image.cpp` (`CliOptions`):
 Hard-coded in `main()` of `experiments/canonical_sgl_image.cpp`:
 
 - `rs = 1.0`
-- source distance `30.0`, observer distance `30.0`
 - image-plane half-width/height = `extent / 2`
 - `horizon_safety_factor = 1.0001`
 - `escape_radius = infinity`
 - null-constraint projection enabled every `1000` steps
+- azimuthal expansion is applied only when `--observer-distance` is exactly `0`
+  (on-axis). Off-axis runs image the actual arrivals only.
 
 Units are geometrized (`G = c = 1`), as stated on `Spacetime::SchwarzschildParameters`
 and `Rays::RaySamplingConfig`.
+
+## Parameter sweeps
+
+`experiments/parameter_sweep.py` is a thin Python orchestrator around the same
+executable. It does not compute physics; it only launches repeated CLI runs.
+
+1. Edit the configuration block at the top of `experiments/parameter_sweep.py`:
+   - `BASE_PARAMS` — fixed CLI values for every run
+   - `SWEEP_NAME` — output folder name under `outputs/sweeps/`
+   - `SWEEP_PARAMETER` — one CLI flag name without `--`
+   - `SWEEP_VALUES` — values to substitute for that flag
+2. Run from the repository root:
+
+```bash
+python3 experiments/parameter_sweep.py
+```
+
+3. Outputs land in:
+
+```text
+outputs/sweeps/<SWEEP_NAME>/<value>/
+    einstein_ring.csv
+    einstein_ring.pgm
+    run_summary.txt
+    run_metadata.json
+    executable_stdout.txt
+    executable_stderr.txt
+outputs/sweeps/<SWEEP_NAME>/summary.csv
+```
+
+4. To define a new sweep, change only `SWEEP_NAME`, `SWEEP_PARAMETER`, and
+   `SWEEP_VALUES` (and optionally `BASE_PARAMS`). Parameter names must match the
+   executable CLI above.
+
+For a `source-distance` sweep, include the string `"inf"` in `SWEEP_VALUES` to
+add a source-at-infinity case. That run uses `--ray-model parallel` (launch-plane
+distance still comes from `BASE_PARAMS["source-distance"]`) and is stored under
+`outputs/sweeps/source_distance/inf/`. Plot with:
+
+```bash
+python3 experiments/plot_source_distance_sweep.py
+```
+
+Meaning of the two observer-related knobs:
+
+- `--observer-axial-distance`: how far the spacecraft is from the Sun/lens along the
+  focal line.
+- `--observer-distance`: how far the spacecraft is **off** the focal line
+  (perpendicular offset). Use this for off-axis / arc experiments.
 
 ---
 

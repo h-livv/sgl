@@ -12,10 +12,10 @@ This document answers the conceptual questions first.
 
 | Question | Answer in this codebase |
 |---|---|
-| Are the rays parallel? | **No.** They all start from one **point source** and fan out toward the lens. |
+| Are the rays parallel? | **Optional.** Default is a **point-source fan**. Use `--ray-model parallel` for a parallel beam. |
 | Uniform random rays? | **No.** Sampling is **deterministic**, not random. |
 | What is sampled? | A **1D linear sweep in impact parameter** `b`, in one orbital plane. |
-| How does a 2D ring appear? | After integration, arrivals are **rotated about the optical axis** by symmetry. |
+| How does a 2D ring appear? | After integration, on-axis arrivals are **rotated about the optical axis** by symmetry. |
 | How is the image made? | Each 2D arrival adds **+1** to one pixel; the grid is then **normalized by its max**. |
 
 ---
@@ -41,25 +41,39 @@ Schwarzschild spacetime. There is no wave optics, diffraction, or detector PSF.
 
 ## 2. How rays are modelled
 
-### Not parallel rays
+The canonical executable supports two launch models via `--ray-model`:
 
-This is **not** a bundle of parallel rays coming from infinity (as in some lensing
-diagrams of a distant plane-wave source).
+| Model | CLI | What it does |
+|---|---|---|
+| Point source (default) | `--ray-model point` | All rays start at one point and fan out with different impact parameters |
+| Parallel beam | `--ray-model parallel` | Rays start on a launch plane with different offsets `b`, all aimed the same way |
+
+### Point source (`point`)
 
 Every ray:
 
-1. Starts at the **same point** — the source position.
-2. Is launched toward the lens with a chosen **impact parameter** `b`.
-3. Is integrated as a **curved null geodesic** (gravity bends the path).
+1. Starts at the **same point** — the source position `(0, 0, −S)`.
+2. Is launched toward the lens with a chosen **impact parameter** `b` (angular momentum).
+3. Is integrated as a **curved null geodesic**.
 
-So the family is a **point-source spray**, parameterized by how “aimed” each ray is
-relative to the lens, not a grid of parallel lines.
+This is a **point-source spray**, not a grid of parallel lines.
+
+### Parallel rays (`parallel`)
+
+Every ray:
+
+1. Starts on the launch plane `z = −S` at world position `(b, 0, −S)`.
+2. Is aimed along **+Z** (toward the lens / observer) — same direction for all rays.
+3. Is converted to a Schwarzschild null geodesic and integrated.
+
+So the family is a **parallel beam** parameterized by transverse offset `b`.
+`--source-distance` still sets the launch-plane distance `S`.
 
 ### Not random
 
 There is **no Monte Carlo / random sampling**.
 
-`RaySampler` picks impact parameters with a **fixed linear grid**:
+Impact parameters use a **fixed linear grid**:
 
 ```text
 b_i = b_min + (i / (N − 1)) · (b_max − b_min)     for i = 0 … N−1
@@ -74,7 +88,7 @@ Same inputs always produce the same rays and the same image.
 
 ### What “impact parameter” means here
 
-For each sample, `build_null_scatter` builds a null geodesic state with:
+**Point model:** for each sample, `build_null_scatter` builds a null geodesic state with:
 
 - energy-like scale `E = 1`
 - angular momentum `L = b · E`
@@ -252,10 +266,10 @@ Einstein-ring image (CSV + PGM)
 
 If you remember only this:
 
-1. **Source model:** one point source, not a parallel beam, not a random field.
+1. **Source model:** default is one point source; optional `--ray-model parallel` uses a parallel beam on the launch plane.
 2. **Sampling:** uniform **in impact parameter** on a 1D grid (even spacing in `b`), deterministic.
 3. **Propagation:** real curved null geodesics for that 1D family only.
-4. **Ring fill:** spherical symmetry → rotate line hits into circles.
+4. **Ring fill:** spherical symmetry → rotate line hits into circles (on-axis only).
 5. **Pixels:** unweighted ray counts, then normalize by the brightest pixel.
 
 That is the entire underlying process behind the ring in the current pipeline.
@@ -268,7 +282,7 @@ To avoid common misunderstandings:
 
 | It is not… | Because… |
 |---|---|
-| Parallel-ray lensing from infinity | All rays start at a finite point source |
+| Parallel-ray lensing from infinity (by default) | Default `--ray-model point` starts all rays at one point; use `parallel` for a finite launch-plane beam |
 | Random / Monte Carlo ray tracing | `b` samples are a fixed linear grid |
 | Full 2D geodesic sampling on the sky | Only one orbital plane is integrated |
 | A radiometric / CCD image | Unit counts + max-normalization only |

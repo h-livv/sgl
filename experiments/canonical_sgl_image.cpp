@@ -1,11 +1,20 @@
 #include <arrivals/ArrivalCollector.h>
 #include <arrivals/AzimuthalExpansion.h>
+#include <geometry/ImagePlane.h>
+#include <geometry/Lens.h>
+#include <geometry/Observer.h>
+#include <geometry/Source.h>
+#include <geometry/WorldFrame.h>
 #include <imaging/Image.h>
 #include <imaging/ImageFormation.h>
 #include <integrators/RK4Integrator.h>
+#include <metrics/CoordinateChart.h>
 #include <problem/PropagationProblem.h>
 #include <propagation/TerminationPolicy.h>
+#include <rays/RayEnsemble.h>
 #include <rays/RaySampler.h>
+#include <schwarzschild/InitialConditions.h>
+#include <schwarzschild/InitialStates.h>
 #include <schwarzschild/PropagationContext.h>
 
 #include <cstdlib>
@@ -22,6 +31,11 @@
 
 namespace {
 
+enum class RayModel {
+    Point,
+    Parallel,
+};
+
 struct CliOptions {
     std::string output_dir = "outputs/sgl_forward";
     int ray_count = 41;
@@ -32,20 +46,41 @@ struct CliOptions {
     double b_max = 11.6;
     double step_size = 0.01;
     int max_steps = 300000;
+    double source_distance = 30.0;
+    // Distance along the optical axis (+Z) from the lens to the observer.
+    double observer_axial_distance = 30.0;
+    // Perpendicular distance from the focal line / optical axis (along +X).
+    // Zero is on-axis (Einstein ring); nonzero is an off-axis observer.
+    double observer_distance = 0.0;
+    RayModel ray_model = RayModel::Point;
 };
+
+const char* ray_model_name(RayModel model) {
+    switch (model) {
+    case RayModel::Point:
+        return "point";
+    case RayModel::Parallel:
+        return "parallel";
+    }
+    return "unknown";
+}
 
 void print_usage(std::ostream& out) {
     out << "Usage: sgl_canonical_sgl_image [options]\n"
-        << "  --output-dir <dir>      Output directory (default: outputs/sgl_forward)\n"
-        << "  --ray-count <int>       Number of impact-parameter samples (default: 41)\n"
-        << "  --azimuth-count <int>   Azimuthal expansion count (default: 720)\n"
-        << "  --resolution <int>      Square image resolution (default: 512)\n"
-        << "  --extent <double>       Physical image extent (default: 40.0)\n"
-        << "  --b-min <double>        Minimum impact parameter (default: 10.2)\n"
-        << "  --b-max <double>        Maximum impact parameter (default: 11.6)\n"
-        << "  --step-size <double>    Integration step size (default: 0.01)\n"
-        << "  --max-steps <int>       Maximum integration steps (default: 300000)\n"
-        << "  --help                  Show this help message\n";
+        << "  --output-dir <dir>              Output directory (default: outputs/sgl_forward)\n"
+        << "  --ray-count <int>               Number of impact-parameter samples (default: 41)\n"
+        << "  --azimuth-count <int>           Azimuthal expansion count (default: 720)\n"
+        << "  --resolution <int>              Square image resolution (default: 512)\n"
+        << "  --extent <double>               Physical image extent (default: 40.0)\n"
+        << "  --b-min <double>                Minimum impact parameter (default: 10.2)\n"
+        << "  --b-max <double>                Maximum impact parameter (default: 11.6)\n"
+        << "  --step-size <double>            Integration step size (default: 0.01)\n"
+        << "  --max-steps <int>               Maximum integration steps (default: 300000)\n"
+        << "  --source-distance <double>      Source/launch-plane distance from lens along -Z (default: 30.0)\n"
+        << "  --observer-axial-distance <double> Observer distance from lens along +Z (default: 30.0)\n"
+        << "  --observer-distance <double>    Perpendicular distance from focal line (default: 0.0)\n"
+        << "  --ray-model <point|parallel>    Ray launch model (default: point)\n"
+        << "  --help                          Show this help message\n";
 }
 
 bool parse_int(const std::string& value, const std::string& flag, int& out) {
@@ -143,11 +178,91 @@ bool parse_args(int argc, char** argv, CliOptions& options) {
             }
             continue;
         }
+        if (arg == "--source-distance") {
+            if (i + 1 >= argc || !parse_double(argv[++i], arg, options.source_distance)) {
+                return false;
+            }
+            continue;
+        }
+        if (arg == "--observer-axial-distance") {
+            if (i + 1 >= argc ||
+                !parse_double(argv[++i], arg, options.observer_axial_distance)) {
+                return false;
+            }
+            continue;
+        }
+        if (arg == "--observer-distance") {
+            if (i + 1 >= argc || !parse_double(argv[++i], arg, options.observer_distance)) {
+                return false;
+            }
+            continue;
+        }
+        if (arg == "--ray-model") {
+            if (i + 1 >= argc) {
+                std::cerr << "Missing value for --ray-model\n";
+                return false;
+            }
+            const std::string value = argv[++i];
+            if (value == "point") {
+                options.ray_model = RayModel::Point;
+            } else if (value == "parallel") {
+                options.ray_model = RayModel::Parallel;
+            } else {
+                std::cerr << "Invalid --ray-model (expected point|parallel): " << value << '\n';
+                return false;
+            }
+            continue;
+        }
         std::cerr << "Unknown argument: " << arg << '\n';
         print_usage(std::cerr);
         return false;
     }
     return true;
+}
+
+double impact_parameter_at(int index, int ray_count, double b_min, double b_max) {
+    if (ray_count == 1) {
+        return b_min;
+    }
+    const double t = static_cast<double>(index) / static_cast<double>(ray_count - 1);
+    return b_min + t * (b_max - b_min);
+}
+
+// Parallel null rays on the launch plane z = -source_distance, offset by impact
+// parameter b along +X, all aimed along +Z (toward the lens / observer).
+State make_parallel_null_state(const Geometry::Lens& lens, double source_distance, double b) {
+    const Eigen::Vector3d world_position =
+        -source_distance * Geometry::WorldFrame::optical_axis() +
+        b * Geometry::WorldFrame::plane_u_axis();
+    const Eigen::Vector3d chart_position = Geometry::to_chart_frame(lens, world_position);
+    const Eigen::Vector3d chart_direction =
+        Geometry::WorldFrame::world_to_chart(Geometry::WorldFrame::optical_axis());
+
+    const State chart_cartesian(
+        Eigen::Vector4d(0.0, chart_position.x(), chart_position.y(), chart_position.z()),
+        Eigen::Vector4d(0.0, chart_direction.x(), chart_direction.y(), chart_direction.z()));
+    const State spherical = CoordinateChart::cart_to_sphere(chart_cartesian);
+
+    Schwarzschild::CustomInitialConditions initial;
+    initial.t0 = 0.0;
+    initial.r0 = spherical.X[1];
+    initial.theta0 = spherical.X[2];
+    initial.phi0 = spherical.X[3];
+    initial.vt = 0.0; // filled by null constraint in build_custom
+    initial.vr = spherical.U[1];
+    initial.vtheta = spherical.U[2];
+    initial.vphi = spherical.U[3];
+    return Schwarzschild::build_custom(lens.parameters, initial, Schwarzschild::GeodesicKind::Null);
+}
+
+Rays::RayEnsemble sample_parallel_rays(const Geometry::Lens& lens, double source_distance,
+                                       int ray_count, double b_min, double b_max) {
+    Rays::RayEnsemble ensemble;
+    for (int i = 0; i < ray_count; ++i) {
+        const double b = impact_parameter_at(i, ray_count, b_min, b_max);
+        ensemble.add(make_parallel_null_state(lens, source_distance, b));
+    }
+    return ensemble;
 }
 
 void write_csv(const std::filesystem::path& path, const Imaging::Image& image) {
@@ -216,6 +331,10 @@ void write_summary(const std::filesystem::path& path, const CliOptions& options,
     out << "b_max=" << options.b_max << '\n';
     out << "step_size=" << options.step_size << '\n';
     out << "max_steps=" << options.max_steps << '\n';
+    out << "source_distance=" << options.source_distance << '\n';
+    out << "observer_axial_distance=" << options.observer_axial_distance << '\n';
+    out << "observer_distance=" << options.observer_distance << '\n';
+    out << "ray_model=" << ray_model_name(options.ray_model) << '\n';
     out << "rays_sampled=" << ray_count << '\n';
     out << "raw_arrivals=" << raw_arrivals << '\n';
     out << "arrived_count=" << arrived_count << '\n';
@@ -235,14 +354,41 @@ int main(int argc, char** argv) {
 
     if (options.ray_count < 1 || options.azimuth_count < 1 || options.resolution < 1 ||
         options.max_steps < 1 || options.extent <= 0.0 || options.step_size <= 0.0 ||
-        options.b_max < options.b_min) {
+        options.b_max < options.b_min || options.source_distance <= 0.0 ||
+        options.observer_axial_distance <= 0.0 || !std::isfinite(options.observer_distance)) {
         std::cerr << "Invalid parameter values.\n";
+        return 1;
+    }
+    if (options.ray_model == RayModel::Point && options.b_min <= 0.0) {
+        std::cerr << "Invalid parameter values: point-source model requires b-min > 0.\n";
+        return 1;
+    }
+    if (options.ray_model == RayModel::Parallel && options.b_min < 0.0) {
+        std::cerr << "Invalid parameter values: parallel model requires b-min >= 0.\n";
+        return 1;
+    }
+    if (options.ray_count > 1 && options.b_max == options.b_min) {
+        std::cerr << "Invalid parameter values: b-max must exceed b-min when ray-count > 1.\n";
         return 1;
     }
 
     const double half_extent = 0.5 * options.extent;
-    const Problem::PropagationProblem problem = Problem::make_aligned_problem(
-        Spacetime::SchwarzschildParameters{.rs = 1.0}, 30.0, 30.0, half_extent, half_extent);
+    Geometry::Lens lens;
+    lens.parameters = Spacetime::SchwarzschildParameters{.rs = 1.0};
+
+    Geometry::Source source;
+    source.position = -options.source_distance * Geometry::WorldFrame::optical_axis();
+
+    // Observer sits at axial distance D along +Z, then displaced perpendicular to the
+    // focal line (optical axis) along +X by observer_distance.
+    const Eigen::Vector3d observer_position =
+        options.observer_axial_distance * Geometry::WorldFrame::optical_axis() +
+        options.observer_distance * Geometry::WorldFrame::plane_u_axis();
+    const Geometry::Observer observer = Geometry::Observer::looking_at(
+        observer_position, Eigen::Vector3d::Zero(), Geometry::WorldFrame::plane_v_axis());
+    const Geometry::ImagePlane image_plane =
+        Geometry::ImagePlane::attached_to(observer, half_extent, half_extent);
+    const Problem::PropagationProblem problem(lens, source, observer, image_plane);
 
     Schwarzschild::PropagationOptions propagation_options;
     propagation_options.horizon_safety_factor = 1.0001;
@@ -258,11 +404,17 @@ int main(int argc, char** argv) {
     const Propagation::IntegrationSettings settings{.step_size = options.step_size,
                                                     .max_steps = options.max_steps};
 
-    const Rays::RaySampler sampler(Rays::RaySamplingConfig{
-        .ray_count = options.ray_count,
-        .min_impact_parameter = options.b_min,
-        .max_impact_parameter = options.b_max});
-    const Rays::RayEnsemble ensemble = sampler.sample(problem);
+    Rays::RayEnsemble ensemble;
+    if (options.ray_model == RayModel::Point) {
+        const Rays::RaySampler sampler(Rays::RaySamplingConfig{
+            .ray_count = options.ray_count,
+            .min_impact_parameter = options.b_min,
+            .max_impact_parameter = options.b_max});
+        ensemble = sampler.sample(problem);
+    } else {
+        ensemble = sample_parallel_rays(lens, options.source_distance, options.ray_count,
+                                        options.b_min, options.b_max);
+    }
     const std::vector<Arrivals::RayArrival> arrivals = Arrivals::collect_arrivals(
         ensemble, problem, context.dynamics(), fallback, settings, integrator,
         context.correction());
@@ -274,8 +426,22 @@ int main(int argc, char** argv) {
         }
     }
 
-    const std::vector<Arrivals::PlaneArrival> plane_arrivals =
-        Arrivals::expand_azimuthally(arrivals, problem.image_plane(), options.azimuth_count);
+    // Azimuthal expansion is valid only on axis (spherical symmetry about the optical
+    // axis). Off-axis observers use the actual plane arrivals only.
+    std::vector<Arrivals::PlaneArrival> plane_arrivals;
+    if (options.observer_distance == 0.0) {
+        plane_arrivals = Arrivals::expand_azimuthally(arrivals, problem.image_plane(),
+                                                      options.azimuth_count);
+    } else {
+        plane_arrivals.reserve(arrived_count);
+        for (const Arrivals::RayArrival& arrival : arrivals) {
+            if (arrival.status != Arrivals::ArrivalStatus::Arrived) {
+                continue;
+            }
+            plane_arrivals.push_back(Arrivals::PlaneArrival{
+                arrival.ray_id, problem.image_plane().to_plane_coordinates(arrival.world_position)});
+        }
+    }
 
     const Imaging::Image image = Imaging::ImageFormation::form_image(
         plane_arrivals, static_cast<std::size_t>(options.resolution),
