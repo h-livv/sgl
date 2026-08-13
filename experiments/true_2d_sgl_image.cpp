@@ -41,6 +41,7 @@ struct CliOptions {
     double observer_distance = 0.0;
     double observer_hit_tolerance = 1e-6;
     int max_root_iterations = 12;
+    int azimuth_count = 720;
 };
 
 void print_usage(std::ostream& out) {
@@ -57,6 +58,7 @@ void print_usage(std::ostream& out) {
         << "  --observer-distance <double>      Perpendicular observer displacement along +X (default: 0.0)\n"
         << "  --observer-hit-tolerance <double> Observer-plane residual tolerance after refinement (default: 1e-6)\n"
         << "  --max-root-iterations <int>       Max Gauss-Newton iterations per seed (default: 12)\n"
+        << "  --azimuth-count <int>             On-axis ring fill count (default: 720; unused off-axis)\n"
         << "  --help                            Show this help message\n";
 }
 
@@ -175,6 +177,12 @@ bool parse_args(int argc, char** argv, CliOptions& options) {
             }
             continue;
         }
+        if (arg == "--azimuth-count") {
+            if (i + 1 >= argc || !parse_int(argv[++i], arg, options.azimuth_count)) {
+                return false;
+            }
+            continue;
+        }
         std::cerr << "Unknown argument: " << arg << '\n';
         print_usage(std::cerr);
         return false;
@@ -229,11 +237,36 @@ void write_pgm(const std::filesystem::path& path, const Imaging::Image& image) {
     }
 }
 
+void write_hits(const std::filesystem::path& path, const Geometry::Observer& observer,
+                const Geometry::ImagePlane& plane,
+                const std::vector<Arrivals::RefinedObserverHit>& hits) {
+    std::ofstream out(path);
+    if (!out) {
+        throw std::runtime_error("failed to open hits output: " + path.string());
+    }
+
+    out << std::setprecision(17);
+    out << "b_u,b_v,residual_u,residual_v,residual_norm,signed_distance,world_miss,"
+           "arrival_x,arrival_y,arrival_z,u_ang,v_ang,iterations,seed_index\n";
+    for (const Arrivals::RefinedObserverHit& hit : hits) {
+        const Eigen::Vector3d miss = hit.hit.arrival.world_position - observer.position();
+        out << hit.hit.b_u << ',' << hit.hit.b_v << ',' << hit.hit.plane_residual.x() << ','
+            << hit.hit.plane_residual.y() << ',' << hit.hit.plane_residual.norm() << ','
+            << plane.signed_distance(hit.hit.arrival.world_position) << ',' << miss.norm() << ','
+            << hit.hit.arrival.world_position.x() << ',' << hit.hit.arrival.world_position.y()
+            << ',' << hit.hit.arrival.world_position.z() << ',' << hit.angular_coordinate.x()
+            << ',' << hit.angular_coordinate.y() << ',' << hit.iterations << ','
+            << hit.seed_index << '\n';
+    }
+}
+
 void write_summary(const std::filesystem::path& path, const CliOptions& options,
-                   std::size_t rays_sampled, std::size_t raw_arrivals, std::size_t arrived_count,
-                   std::size_t seed_count, std::size_t refined_count, double max_refined_residual,
-                   double median_radius, double radial_stddev, double raw_max,
-                   const std::filesystem::path& csv_path, const std::filesystem::path& pgm_path) {
+                   const Geometry::Observer& observer, std::size_t rays_sampled,
+                   std::size_t raw_arrivals, std::size_t arrived_count, std::size_t seed_count,
+                   std::size_t refined_count, std::size_t angular_samples,
+                   double max_refined_residual, double median_radius, double radial_stddev,
+                   double image_extent, double raw_max, const std::filesystem::path& csv_path,
+                   const std::filesystem::path& pgm_path, const std::filesystem::path& hits_path) {
     std::ofstream out(path);
     if (!out) {
         throw std::runtime_error("failed to open summary output: " + path.string());
@@ -245,25 +278,33 @@ void write_summary(const std::filesystem::path& path, const CliOptions& options,
     out << "samples_per_axis=" << options.samples_per_axis << '\n';
     out << "resolution=" << options.resolution << '\n';
     out << "extent=" << options.extent << '\n';
+    out << "image_extent=" << image_extent << '\n';
     out << "b_max=" << options.b_max << '\n';
     out << "step_size=" << options.step_size << '\n';
     out << "max_steps=" << options.max_steps << '\n';
     out << "source_distance=" << options.source_distance << '\n';
     out << "observer_axial_distance=" << options.observer_axial_distance << '\n';
     out << "observer_distance=" << options.observer_distance << '\n';
+    out << "observer_position_x=" << observer.position().x() << '\n';
+    out << "observer_position_y=" << observer.position().y() << '\n';
+    out << "observer_position_z=" << observer.position().z() << '\n';
     out << "observer_hit_tolerance=" << options.observer_hit_tolerance << '\n';
     out << "max_root_iterations=" << options.max_root_iterations << '\n';
+    out << "azimuth_count=" << options.azimuth_count << '\n';
+    out << "on_axis_azimuthal_expansion=" << (options.observer_distance == 0.0 ? 1 : 0) << '\n';
     out << "rays_sampled=" << rays_sampled << '\n';
     out << "raw_arrivals=" << raw_arrivals << '\n';
     out << "arrived_count=" << arrived_count << '\n';
     out << "seed_count=" << seed_count << '\n';
     out << "refined_observer_hits=" << refined_count << '\n';
+    out << "angular_samples=" << angular_samples << '\n';
     out << "max_refined_residual=" << max_refined_residual << '\n';
     out << "median_angular_radius=" << median_radius << '\n';
     out << "radial_stddev=" << radial_stddev << '\n';
     out << "raw_image_max=" << raw_max << '\n';
     out << "csv_path=" << csv_path.string() << '\n';
     out << "pgm_path=" << pgm_path.string() << '\n';
+    out << "hits_path=" << hits_path.string() << '\n';
 }
 
 double median_radius(const std::vector<Eigen::Vector2d>& coordinates) {
@@ -315,7 +356,7 @@ int main(int argc, char** argv) {
         options.extent <= 0.0 || options.step_size <= 0.0 || options.b_max <= 0.0 ||
         options.source_distance <= 0.0 || options.observer_axial_distance <= 0.0 ||
         options.observer_hit_tolerance <= 0.0 || options.max_root_iterations < 1 ||
-        !std::isfinite(options.observer_distance)) {
+        options.azimuth_count < 1 || !std::isfinite(options.observer_distance)) {
         std::cerr << "Invalid parameter values.\n";
         return 1;
     }
@@ -387,9 +428,20 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    const std::vector<Eigen::Vector2d> image_samples = Arrivals::fill_aligned_observer_ring(
+        angular_coordinates, options.observer_distance, options.azimuth_count);
+
+    const double image_extent =
+        Imaging::ImageFormation::covering_extent(image_samples, options.extent);
+    if (image_extent > options.extent) {
+        std::cerr << "Warning: observer-hit angular samples fall outside extent="
+                  << options.extent << "; imaging with extent=" << image_extent
+                  << " so they are not discarded.\n";
+    }
+
     const Imaging::Image image = Imaging::ImageFormation::form_image(
-        angular_coordinates, static_cast<std::size_t>(options.resolution),
-        static_cast<std::size_t>(options.resolution), options.extent);
+        image_samples, static_cast<std::size_t>(options.resolution),
+        static_cast<std::size_t>(options.resolution), image_extent);
     const double raw_max = image.max_intensity();
     const Imaging::Image normalized = image.normalized_to_max();
 
@@ -398,17 +450,21 @@ int main(int argc, char** argv) {
 
     const std::filesystem::path csv_path = output_dir / "true_2d_image.csv";
     const std::filesystem::path pgm_path = output_dir / "true_2d_image.pgm";
+    const std::filesystem::path hits_path = output_dir / "refined_observer_hits.csv";
     const std::filesystem::path summary_path = output_dir / "run_summary.txt";
 
     write_csv(csv_path, normalized);
     write_pgm(pgm_path, normalized);
-    write_summary(summary_path, options, ensemble.size(), arrivals.size(), arrived_count,
-                  seeds.size(), angular_coordinates.size(), max_refined_residual,
-                  median_radius(angular_coordinates), radial_stddev(angular_coordinates), raw_max,
-                  csv_path, pgm_path);
+    write_hits(hits_path, observer, problem.image_plane(), refined);
+    write_summary(summary_path, options, observer, ensemble.size(), arrivals.size(),
+                  arrived_count, seeds.size(), angular_coordinates.size(), image_samples.size(),
+                  max_refined_residual, median_radius(angular_coordinates),
+                  radial_stddev(angular_coordinates), image_extent, raw_max, csv_path, pgm_path,
+                  hits_path);
 
     std::cout << "Wrote " << csv_path << '\n';
     std::cout << "Wrote " << pgm_path << '\n';
+    std::cout << "Wrote " << hits_path << '\n';
     std::cout << "Wrote " << summary_path << '\n';
     return 0;
 }

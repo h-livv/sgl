@@ -11,6 +11,10 @@ namespace Rays {
 
 // Deterministic cell-centered square grid on the source launch plane.
 // Geometrized units (G = c = 1).
+//
+// (b_u, b_v) are launch-plane impact-parameter offsets from the source along
+// WorldFrame (X, Y), with every ray aimed source → lens. They are not observer
+// coordinates. Moving the observer changes the F=0 target, not this grid.
 struct RayGrid2DSamplingConfig {
     int samples_per_axis = 5;
     double max_impact_parameter = 20.0;

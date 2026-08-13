@@ -63,7 +63,7 @@ BASE_PARAMS_1D = {
 # N=11 is the recommended Cartesian search density: cell width ~3.6, enough
 # distinct launch-plane azimuths without the 21x21 search tax.
 BASE_PARAMS_2D = {
-    "samples-per-axis": 71,
+    "samples-per-axis": 11,
     "resolution": 64,
     "extent": 0.8,
     "b-max": 20.0,
@@ -86,7 +86,7 @@ BASE_PARAMS_2D = {
 # so this automatically selects sgl_true_2d_sgl_image.
 SWEEP_NAME = "observer_distance"
 SWEEP_PARAMETER = "observer-distance"
-SWEEP_VALUES = [0.0, 0.5, 1.0, 1.5, 2.0]
+SWEEP_VALUES = [0.1, 0.25, 0.5]
 
 OUTPUT_ROOT = "outputs/sweeps"
 
@@ -121,6 +121,7 @@ KNOWN_CLI_PARAMS_1D = frozenset(
 KNOWN_CLI_PARAMS_2D = frozenset(
     {
         "samples-per-axis",
+        "azimuth-count",
         "resolution",
         "extent",
         "b-max",

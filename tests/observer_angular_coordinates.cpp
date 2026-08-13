@@ -75,5 +75,21 @@ int main() {
     } catch (const std::invalid_argument&) {
     }
 
+    const std::vector<Eigen::Vector2d> two_hits = {Eigen::Vector2d(0.3, 0.0),
+                                                   Eigen::Vector2d(-0.3, 0.0)};
+    const std::vector<Eigen::Vector2d> on_axis =
+        Arrivals::fill_aligned_observer_ring(two_hits, 0.0, 8);
+    CHECK(on_axis.size() == 8, "on-axis fill uses azimuth_count");
+    CHECK_CLOSE(on_axis[0].x(), 0.3, 1e-15, "on-axis fill k=0 u");
+    CHECK_CLOSE(on_axis[0].y(), 0.0, 1e-15, "on-axis fill k=0 v");
+    CHECK_CLOSE(on_axis[2].x(), 0.0, 1e-15, "on-axis fill k=2 u");
+    CHECK_CLOSE(on_axis[2].y(), 0.3, 1e-15, "on-axis fill k=2 v");
+
+    const std::vector<Eigen::Vector2d> off_axis =
+        Arrivals::fill_aligned_observer_ring(two_hits, 1.0, 8);
+    CHECK(off_axis.size() == 2, "off-axis keeps isolated hits");
+    CHECK_CLOSE(off_axis[0].x(), 0.3, 1e-15, "off-axis first u");
+    CHECK_CLOSE(off_axis[1].x(), -0.3, 1e-15, "off-axis second u");
+
     return TestSupport::report();
 }

@@ -37,6 +37,9 @@ struct ObserverLaunchRefinementConfig {
 };
 
 // Propagate one launch-plane sample and return its observer-plane residual.
+// The residual is ImagePlane::to_plane_coordinates(arrival): (0,0) is the
+// observer position, not the optical-axis foot. F(b_u, b_v) = 0 is the
+// observer-hit condition for any Observer::looking_at placement.
 LaunchHit evaluate_launch(const Problem::PropagationProblem& problem,
                           const Rays::RayGrid2DSampler& sampler, double b_u, double b_v,
                           Schwarzschild::PropagationContext& context,

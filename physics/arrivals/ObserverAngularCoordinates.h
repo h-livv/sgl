@@ -22,4 +22,11 @@ std::optional<Eigen::Vector2d> observer_angular_coordinates(const RayArrival& ar
 // Preserves signed u_ang at k=0. Throws std::invalid_argument if azimuth_count < 1.
 std::vector<Eigen::Vector2d> expand_angular_azimuthally(double signed_u_ang, int azimuth_count);
 
+// On-axis (observer_distance == 0) the refined hits lie on a circle that isolated
+// 2D Newton cannot fill. Rotate their characteristic angular radius into a continuous
+// ring, matching the 1D path. Off-axis, return the refined hits unchanged.
+std::vector<Eigen::Vector2d>
+fill_aligned_observer_ring(const std::vector<Eigen::Vector2d>& refined_angular,
+                           double observer_distance, int azimuth_count);
+
 } // namespace Arrivals

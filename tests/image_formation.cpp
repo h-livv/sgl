@@ -142,6 +142,18 @@ int main() {
                           formed_again.data().begin())),
           "deterministic formation");
 
+    const std::vector<Eigen::Vector2d> clipped = {Eigen::Vector2d(0.6608, 0.0)};
+    CHECK_CLOSE(Imaging::ImageFormation::covering_extent(clipped, 0.8), 2.0 * 0.6608 * 1.1, 1e-15,
+                "covering_extent expands past half-open bound");
+    CHECK_CLOSE(Imaging::ImageFormation::covering_extent({Eigen::Vector2d(0.2, 0.0)}, 0.8), 0.8,
+                1e-15, "covering_extent keeps requested window when samples fit");
+    const double expanded = Imaging::ImageFormation::covering_extent(clipped, 0.8);
+    const Imaging::Image recovered =
+        Imaging::ImageFormation::form_image(clipped, 64, 64, expanded);
+    CHECK(recovered.max_intensity() > 0.0, "expanded window contains the clipped sample");
+    CHECK(Imaging::ImageFormation::form_image(clipped, 64, 64, 0.8).max_intensity() == 0.0,
+          "requested 0.8 window drops u=0.6608");
+
     expect_out_of_range(image, 4, 0);
     expect_out_of_range(image, 0, 3);
 

@@ -1,5 +1,6 @@
 #include "ImageFormation.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace Imaging::ImageFormation {
@@ -63,6 +64,32 @@ Image form_image(const std::vector<Arrivals::PlaneArrival>& arrivals, std::size_
         positions.push_back(arrival.plane_position);
     }
     return form_image(positions, width, height, coordinate_extent);
+}
+
+double covering_extent(const std::vector<Eigen::Vector2d>& image_positions,
+                       double requested_extent) {
+    if (!(requested_extent > 0.0) || !std::isfinite(requested_extent)) {
+        return requested_extent;
+    }
+
+    double max_abs = 0.0;
+    for (const Eigen::Vector2d& position : image_positions) {
+        if (!std::isfinite(position.x()) || !std::isfinite(position.y())) {
+            continue;
+        }
+        max_abs = std::max(max_abs, std::max(std::abs(position.x()), std::abs(position.y())));
+    }
+    if (!(max_abs > 0.0)) {
+        return requested_extent;
+    }
+
+    const double half = 0.5 * requested_extent;
+    if (max_abs < half) {
+        return requested_extent;
+    }
+
+    constexpr double kMargin = 1.1;
+    return 2.0 * max_abs * kMargin;
 }
 
 } // namespace Imaging::ImageFormation

@@ -179,4 +179,8 @@ if(SGL_BUILD_TESTS)
 
     add_executable(sgl_true_2d_off_axis_validation tests/true_2d_off_axis_validation.cpp)
     target_link_libraries(sgl_true_2d_off_axis_validation PRIVATE sgl_imaging)
+
+    add_executable(sgl_off_axis_observer_hit tests/off_axis_observer_hit.cpp)
+    target_link_libraries(sgl_off_axis_observer_hit PRIVATE sgl_imaging)
+    add_test(NAME off_axis_observer_hit COMMAND sgl_off_axis_observer_hit)
 endif()

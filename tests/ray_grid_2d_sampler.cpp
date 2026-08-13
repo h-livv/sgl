@@ -78,5 +78,21 @@ int main() {
               "deterministic resample velocity");
     }
 
+    Geometry::Lens lens;
+    lens.parameters = Spacetime::SchwarzschildParameters{.rs = 1.0};
+    Geometry::Source source;
+    source.position = -source_distance * Geometry::WorldFrame::optical_axis();
+    const Geometry::Observer off_axis_observer = Geometry::Observer::looking_at(
+        Eigen::Vector3d(1.0, 0.0, observer_distance), Eigen::Vector3d::Zero(),
+        Geometry::WorldFrame::plane_v_axis());
+    const Geometry::ImagePlane off_plane =
+        Geometry::ImagePlane::attached_to(off_axis_observer, half_extent, half_extent);
+    const Problem::PropagationProblem off_axis_problem(lens, source, off_axis_observer, off_plane);
+
+    const State aligned_launch = sampler.state_for(problem, 4.0, -3.0);
+    const State off_axis_launch = sampler.state_for(off_axis_problem, 4.0, -3.0);
+    CHECK(aligned_launch.X == off_axis_launch.X, "launch position independent of observer");
+    CHECK(aligned_launch.U == off_axis_launch.U, "launch velocity independent of observer");
+
     return TestSupport::report();
 }

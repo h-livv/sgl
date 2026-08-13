@@ -88,6 +88,22 @@ int main() {
     CHECK(!plane.contains(Eigen::Vector2d(0.0, plane.half_height() * 1.1)),
           "outside height rejected");
 
+    const Geometry::Observer off_axis_observer = Geometry::Observer::looking_at(
+        Eigen::Vector3d(1.0, 0.0, 30.0), Eigen::Vector3d::Zero(), Eigen::Vector3d(0, 1, 0));
+    const Geometry::ImagePlane off_plane =
+        Geometry::ImagePlane::attached_to(off_axis_observer, 2.0, 1.5);
+    CHECK(vectors_close(off_plane.origin(), off_axis_observer.position(), 1e-15),
+          "off-axis plane origin is the observer");
+    CHECK(plane_coords_close(off_plane.to_plane_coordinates(off_axis_observer.position()),
+                             Eigen::Vector2d::Zero(), 1e-15),
+          "observer-hit residual origin is the observer");
+    CHECK_CLOSE(off_plane.signed_distance(off_axis_observer.position()), 0.0, 1e-15,
+                "observer lies on its image plane");
+    CHECK(off_plane.to_plane_coordinates(Eigen::Vector3d(0.0, 0.0, 30.0)).norm() > 0.1,
+          "optical-axis foot is not the off-axis residual origin");
+    CHECK(vectors_close(off_plane.normal(), -off_axis_observer.forward(), 1e-12),
+          "off-axis plane faces the observer look direction");
+
     expect_invalid_image_plane(plane.origin(), Eigen::Vector3d(2, 0, 0), plane.v_axis(),
                                plane.half_width(), plane.half_height());
     expect_invalid_image_plane(plane.origin(), plane.u_axis(), Eigen::Vector3d(0, 2, 0),

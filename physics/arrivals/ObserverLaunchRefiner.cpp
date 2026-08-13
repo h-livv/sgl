@@ -21,6 +21,8 @@ Eigen::Vector2d plane_residual(const Geometry::ImagePlane& plane, const RayArriv
     if (arrival.status != ArrivalStatus::Arrived) {
         return Eigen::Vector2d::Constant(std::numeric_limits<double>::quiet_NaN());
     }
+    // Observer-centered: ImagePlane origin is the observer, so (0, 0) is a
+    // true observer hit. Off-axis observers do not need a residual offset.
     return plane.to_plane_coordinates(arrival.world_position);
 }
 

@@ -1,5 +1,6 @@
 #include "ObserverAngularCoordinates.h"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
@@ -50,6 +51,26 @@ std::vector<Eigen::Vector2d> expand_angular_azimuthally(double signed_u_ang, int
             Eigen::Vector2d(signed_u_ang * std::cos(psi), signed_u_ang * std::sin(psi)));
     }
     return expanded;
+}
+
+std::vector<Eigen::Vector2d>
+fill_aligned_observer_ring(const std::vector<Eigen::Vector2d>& refined_angular,
+                           double observer_distance, int azimuth_count) {
+    if (observer_distance != 0.0 || refined_angular.empty()) {
+        return refined_angular;
+    }
+
+    std::vector<double> radii;
+    radii.reserve(refined_angular.size());
+    for (const Eigen::Vector2d& coordinate : refined_angular) {
+        radii.push_back(coordinate.norm());
+    }
+    std::sort(radii.begin(), radii.end());
+    const std::size_t mid = radii.size() / 2;
+    const double rho = (radii.size() % 2 == 1)
+                           ? radii[mid]
+                           : 0.5 * (radii[mid - 1] + radii[mid]);
+    return expand_angular_azimuthally(rho, azimuth_count);
 }
 
 } // namespace Arrivals

@@ -30,4 +30,11 @@ Image form_image(const std::vector<Eigen::Vector2d>& image_positions, std::size_
 Image form_image(const std::vector<Arrivals::PlaneArrival>& arrivals, std::size_t width,
                  std::size_t height, double coordinate_extent);
 
+// Smallest even-sided extent that keeps every finite sample strictly inside the
+// half-open imaging window, or `requested_extent` if it already does. Pixel
+// mapping treats u_max / v_max as out of bounds, so a sample on the boundary
+// is not inside.
+double covering_extent(const std::vector<Eigen::Vector2d>& image_positions,
+                       double requested_extent);
+
 } // namespace Imaging::ImageFormation
