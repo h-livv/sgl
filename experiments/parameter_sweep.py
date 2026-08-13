@@ -30,14 +30,16 @@ EXECUTABLE = "build/sgl_canonical_sgl_image"
 # Fixed parameters for every run in the sweep. Keys are CLI flag names WITHOUT
 # the leading "--" and MUST match sgl_canonical_sgl_image --help.
 BASE_PARAMS = {
-    "ray-count": 100,
-    "azimuth-count": 720,
+    "ray-count": 101,
+    "azimuth-count": 360,
     "resolution": 512,
-    "extent": 40.0,
-    "b-min": 10.2,
-    "b-max": 11.6,
+    "extent": 0.8,
+    "b-min": 4.0,
+    "b-max": 20.0,
     "step-size": 0.01,
-    "max-steps": 100000,
+    "max-steps": 300000,
+    "observer-hit-tolerance": 1e-6,
+    "max-root-iterations": 60,
     # For ray-model=parallel, this is the launch-plane distance (not a point-source range).
     "source-distance": 30.0,
     "observer-axial-distance": 30.0,
@@ -51,7 +53,7 @@ BASE_PARAMS = {
 # Use the string "inf" in a source-distance sweep for source-at-infinity (parallel rays).
 SWEEP_NAME = "source_distance"
 SWEEP_PARAMETER = "source-distance"
-SWEEP_VALUES = [50, 100, 200, "inf"]
+SWEEP_VALUES = [20, 50, 100, 200, 500, 1000, "inf"]
 
 # Alternate example: sweep perpendicular distance from the focal line.
 # SWEEP_NAME = "observer_distance"
@@ -78,6 +80,8 @@ KNOWN_CLI_PARAMS = frozenset(
         "observer-axial-distance",
         "observer-distance",
         "ray-model",
+        "observer-hit-tolerance",
+        "max-root-iterations",
     }
 )
 

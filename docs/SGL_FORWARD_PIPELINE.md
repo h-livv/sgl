@@ -20,8 +20,10 @@ Scientifically, it:
 2. Samples a one-parameter family of null geodesics by impact parameter.
 3. Integrates each geodesic in the Schwarzschild spherical chart.
 4. Detects first arrival at the observer image plane.
-5. Exploits spherical symmetry to rotate the equatorial arrival locus into a 2D ring.
-6. Bins arrivals into pixels with unit weights and writes a normalized image.
+5. Finds the observer-hit ray via `residual_u(b)` root localization.
+6. Maps the incoming photon direction to observer-centered gnomonic angular coordinates.
+7. Exploits spherical symmetry to rotate the equatorial angular coordinate into a 2D ring.
+8. Bins angular coordinates into pixels with unit weights and writes a normalized image.
 
 ## Pipeline diagram (implemented stages)
 
@@ -39,10 +41,14 @@ Observer-plane crossing
       ↓  Arrivals::PlaneCrossingTermination + Arrivals::localize_arrival
 Ray arrivals
       ↓  std::vector<Arrivals::RayArrival>
+Observer-hit root search
+      ↓  residual_u(b) scan + bisection (canonical executable)
+Angular coordinates
+      ↓  Arrivals::observer_angular_coordinates  (physics/arrivals/ObserverAngularCoordinates.cpp)
 Azimuthal symmetry expansion
-      ↓  Arrivals::expand_azimuthally   (physics/arrivals/AzimuthalExpansion.cpp)
-2D plane arrivals
-      ↓  std::vector<Arrivals::PlaneArrival>
+      ↓  Arrivals::expand_angular_azimuthally
+2D angular samples
+      ↓  std::vector<Eigen::Vector2d>
 Image formation
       ↓  Imaging::ImageFormation::form_image  (physics/imaging/ImageFormation.cpp)
 Intensity image
@@ -58,7 +64,7 @@ Einstein ring
 | `sgl_geometry` | `Lens`, `Source`, `Observer`, `ImagePlane`, `PropagationProblem` |
 | `sgl_physics` | metric, dynamics, RK4, propagator, Schwarzschild helpers |
 | `sgl_rays` | `Ray`, `RayEnsemble`, `RaySampler`, `propagate_ensemble` |
-| `sgl_arrivals` | plane crossing, `RayArrival`, azimuthal expansion |
+| `sgl_arrivals` | plane crossing, `RayArrival`, angular coordinates, azimuthal expansion |
 | `sgl_imaging` | `Image`, `ImageFormation` |
 | `sgl_canonical_sgl_image` | executable that wires the full path and writes outputs |
 
@@ -108,10 +114,12 @@ Under the chosen `--output-dir` (default `outputs/sgl_forward`):
 
 A successful default run produces (example from an actual execution):
 
-- `rays_sampled=41`
-- `arrived_count=41`
-- `plane_arrivals=29520` (= 41 × 720)
-- `raw_image_max=2`
+- `image_observable=observer_angular_gnomonic`
+- `rays_sampled=801`
+- `observer_hit_candidate_count=1` (or more; one selected)
+- `observer_hit_count=1`
+- `angular_samples=720`
+- `raw_image_max=1` (after normalization in CSV)
 
 ## View the image
 
@@ -129,18 +137,20 @@ Defined in `experiments/canonical_sgl_image.cpp` (`CliOptions`):
 | Flag | Default | Meaning |
 |---|---|---|
 | `--output-dir` | `outputs/sgl_forward` | Output directory (created if needed) |
-| `--ray-count` | `41` | Number of impact-parameter samples |
-| `--azimuth-count` | `720` | Azimuthal copies per arrived ray |
-| `--resolution` | `512` | Square image width and height |
-| `--extent` | `40.0` | Physical image extent in plane coordinates |
-| `--b-min` | `10.2` | Minimum impact parameter |
-| `--b-max` | `11.6` | Maximum impact parameter |
+| `--ray-count` | `801` | Number of impact-parameter samples for residual scan |
+| `--azimuth-count` | `720` | Azimuthal copies of the selected angular coordinate |
+| `--resolution` | `1024` | Square image width and height |
+| `--extent` | `0.8` | Angular tangent-plane extent (dimensionless gnomonic coordinates) |
+| `--b-min` | `2.0` | Minimum impact parameter for root bracketing |
+| `--b-max` | `20.0` | Maximum impact parameter for root bracketing |
 | `--step-size` | `0.01` | Affine-parameter RK4 step |
 | `--max-steps` | `300000` | Per-ray step budget |
 | `--source-distance` | `30.0` | Source distance from the lens along −Z |
 | `--observer-axial-distance` | `30.0` | Observer distance from the lens along the optical axis (+Z) |
 | `--observer-distance` | `0.0` | Perpendicular distance from the focal line / optical axis (along +X; 0 = on-axis) |
 | `--ray-model` | `point` | `point` = fan from a point source; `parallel` = parallel beam on the launch plane at `z = -source-distance` |
+| `--observer-hit-tolerance` | `1e-6` | Bisection stop tolerance on plane-coordinate residual `residual_u` |
+| `--max-root-iterations` | `60` | Maximum bisection iterations per observer-hit candidate |
 | `--help` | — | Print usage |
 
 ### Fixed physics (not on CLI)
@@ -152,8 +162,8 @@ Hard-coded in `main()` of `experiments/canonical_sgl_image.cpp`:
 - `horizon_safety_factor = 1.0001`
 - `escape_radius = infinity`
 - null-constraint projection enabled every `1000` steps
-- azimuthal expansion is applied only when `--observer-distance` is exactly `0`
-  (on-axis). Off-axis runs image the actual arrivals only.
+- azimuthal angular expansion is applied only when `--observer-distance` is exactly `0`
+  (on-axis). Off-axis runs are rejected for the canonical angular image path.
 
 Units are geometrized (`G = c = 1`), as stated on `Spacetime::SchwarzschildParameters`
 and `Rays::RaySamplingConfig`.

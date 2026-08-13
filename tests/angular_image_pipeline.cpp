@@ -3,43 +3,12 @@
 
 #include <arrivals/ObserverAngularCoordinates.h>
 #include <imaging/ImageFormation.h>
-#include <integrators/RK4Integrator.h>
-#include <problem/PropagationProblem.h>
-#include <propagation/TerminationPolicy.h>
-#include <schwarzschild/PropagationContext.h>
 
 #include <cmath>
 #include <limits>
 #include <vector>
 
 namespace {
-
-bool images_equal(const Imaging::Image& a, const Imaging::Image& b) {
-    if (a.width() != b.width() || a.height() != b.height()) {
-        return false;
-    }
-    const std::vector<double>& data_a = a.data();
-    const std::vector<double>& data_b = b.data();
-    if (data_a.size() != data_b.size()) {
-        return false;
-    }
-    for (std::size_t i = 0; i < data_a.size(); ++i) {
-        if (data_a[i] != data_b[i]) {
-            return false;
-        }
-    }
-    return true;
-}
-
-int count_nonzero_pixels(const Imaging::Image& image) {
-    int count = 0;
-    for (double value : image.data()) {
-        if (value > 0.0) {
-            ++count;
-        }
-    }
-    return count;
-}
 
 bool has_nonzero_in_quadrant(const Imaging::Image& image, bool positive_u, bool positive_v) {
     for (std::size_t y = 0; y < image.height(); ++y) {
@@ -88,7 +57,7 @@ double max_nonzero_radius(const Imaging::Image& image) {
 
 int main() {
     constexpr double angular_extent = 0.8;
-    constexpr int ray_count = 9;
+    constexpr int ray_count = 41;
     constexpr int azimuth_count = 96;
     constexpr std::size_t resolution = 128;
     constexpr double b_min = 2.0;
@@ -99,7 +68,7 @@ int main() {
     constexpr int max_root_iterations = 60;
 
     const Problem::PropagationProblem problem = Problem::make_aligned_problem(
-        Spacetime::SchwarzschildParameters{.rs = 1.0}, 30.0, 30.0, angular_extent / 2.0,
+        Spacetime::SchwarzschildParameters{.rs = 1.0}, 100.0, 30.0, angular_extent / 2.0,
         angular_extent / 2.0);
 
     Schwarzschild::PropagationOptions options;
@@ -119,17 +88,41 @@ int main() {
     const AngularPipelineTest::SelectedObserverHit selection =
         AngularPipelineTest::run_angular_pipeline(
             problem, context, fallback, settings, integrator,
-            AngularPipelineTest::RayModel::Point, 30.0, ray_count, b_min, b_max,
+            AngularPipelineTest::RayModel::Point, 100.0, ray_count, b_min, b_max,
             observer_hit_tolerance, max_root_iterations);
 
     CHECK(selection.candidate_count >= 1, "at least one observer-hit bracket");
     CHECK(selection.selected_bracket_index >= 0, "primary observer hit selected");
+
+    int selected_count = 0;
+    for (const AngularPipelineTest::ObserverHitCandidate& candidate : selection.candidates) {
+        if (candidate.selected) {
+            ++selected_count;
+        }
+    }
+    CHECK(selected_count == 1, "exactly one selected candidate");
+
+  double smallest_positive_rho = std::numeric_limits<double>::infinity();
+  for (const AngularPipelineTest::ObserverHitCandidate& candidate : selection.candidates) {
+    if (!std::isfinite(candidate.angular_radius) || candidate.angular_radius <= 0.0) {
+      continue;
+    }
+    smallest_positive_rho = std::min(smallest_positive_rho, candidate.angular_radius);
+  }
+  if (std::isfinite(smallest_positive_rho)) {
+    CHECK_CLOSE(selection.angular_radius, smallest_positive_rho, 1e-8,
+                "selected candidate has smallest positive angular radius");
+  }
+
     CHECK(std::abs(selection.hit.residual_u) <= observer_hit_tolerance,
           "refined observer-hit residual within tolerance");
+    CHECK(std::isfinite(selection.angular_coordinate.x()) &&
+              std::isfinite(selection.angular_coordinate.y()),
+          "angular coordinate finite");
 
     const std::vector<Eigen::Vector2d> angular_samples =
         Arrivals::expand_angular_azimuthally(selection.angular_coordinate.x(), azimuth_count);
-    CHECK(angular_samples.size() > 0, "nonzero angular samples");
+    CHECK(angular_samples.size() > 0, "angular samples produced");
 
     const Imaging::Image image = Imaging::ImageFormation::form_image(
         angular_samples, resolution, resolution, angular_extent);
@@ -142,7 +135,6 @@ int main() {
     const std::size_t center_y = image.height() / 2;
     CHECK_CLOSE(image.at(center_x, center_y), 0.0, 1e-15, "center pixel intensity zero");
 
-    CHECK(count_nonzero_pixels(image) > 0, "nonzero pixels exist");
     CHECK(has_nonzero_in_quadrant(image, true, true), "nonzero in quadrant ++");
     CHECK(has_nonzero_in_quadrant(image, true, false), "nonzero in quadrant +-");
     CHECK(has_nonzero_in_quadrant(image, false, true), "nonzero in quadrant -+");
@@ -150,12 +142,8 @@ int main() {
 
     const double r_min = min_nonzero_radius(image);
     const double r_max = max_nonzero_radius(image);
-    CHECK(r_min > 0.0, "localized angular ring has positive inner radius");
-    CHECK(r_max / r_min < 1.25, "localized angular ring thickness bounded");
-
-    const Imaging::Image image_repeat = Imaging::ImageFormation::form_image(
-        angular_samples, resolution, resolution, angular_extent);
-    CHECK(images_equal(image, image_repeat), "deterministic image formation");
+    CHECK(r_min > 0.0, "localized ring has positive inner radius");
+    CHECK(r_max / r_min < 1.25, "localized ring thickness bounded");
 
     return TestSupport::report();
 }

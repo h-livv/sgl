@@ -80,7 +80,19 @@ int main() {
 
     const Arrivals::PlaneArrival in_bounds{1, Eigen::Vector2d(-1.5, -1.0)};
     Imaging::ImageFormation::accumulate(mutable_image, in_bounds);
-    CHECK_CLOSE(mutable_image.at(0, 0), 1.0, 1e-15, "single accumulation");
+    CHECK_CLOSE(mutable_image.at(0, 0), 1.0, 1e-15, "single plane accumulation");
+
+    const Eigen::Vector2d vector_in_bounds(-1.5, -1.0);
+    Imaging::ImageFormation::accumulate(mutable_image, vector_in_bounds);
+    CHECK_CLOSE(mutable_image.at(0, 0), 2.0, 1e-15, "single vector accumulation");
+
+    const std::vector<Eigen::Vector2d> repeated_vectors{
+        Eigen::Vector2d(-1.5, -1.0),
+        Eigen::Vector2d(-1.5, -1.0),
+        Eigen::Vector2d(-1.5, -1.0),
+    };
+    Imaging::ImageFormation::accumulate(mutable_image, repeated_vectors);
+    CHECK_CLOSE(mutable_image.at(0, 0), 5.0, 1e-15, "multiple vector accumulation");
 
     const std::vector<Arrivals::PlaneArrival> repeated{
         Arrivals::PlaneArrival{2, Eigen::Vector2d(-1.5, -1.0)},
@@ -88,7 +100,7 @@ int main() {
         Arrivals::PlaneArrival{4, Eigen::Vector2d(-1.5, -1.0)},
     };
     Imaging::ImageFormation::accumulate(mutable_image, repeated);
-    CHECK_CLOSE(mutable_image.at(0, 0), 4.0, 1e-15, "multiple accumulation");
+    CHECK_CLOSE(mutable_image.at(0, 0), 8.0, 1e-15, "multiple plane accumulation");
 
     const Imaging::Image normalized = mutable_image.normalized_to_max();
     CHECK_CLOSE(normalized.max_intensity(), 1.0, 1e-15, "normalized max");
@@ -109,6 +121,18 @@ int main() {
     CHECK(formed.height() == 4, "formed height");
     CHECK_CLOSE(formed.u_min(), -2.0, 1e-15, "formed u_min");
     CHECK_CLOSE(formed.u_max(), 2.0, 1e-15, "formed u_max");
+
+    const std::vector<Eigen::Vector2d> vector_arrivals{
+        Eigen::Vector2d(0.5, 0.5),
+        Eigen::Vector2d(-0.5, -0.5),
+    };
+    const Imaging::Image vector_formed =
+        Imaging::ImageFormation::form_image(vector_arrivals, 4, 4, 4.0);
+    CHECK(vector_formed.data() == formed.data() ||
+              (vector_formed.data().size() == formed.data().size() &&
+               std::equal(vector_formed.data().begin(), vector_formed.data().end(),
+                          formed.data().begin())),
+          "vector overload matches plane delegation");
 
     const Imaging::Image formed_again =
         Imaging::ImageFormation::form_image(arrivals, 4, 4, 4.0);

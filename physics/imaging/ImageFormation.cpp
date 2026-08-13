@@ -23,13 +23,22 @@ std::optional<std::pair<std::size_t, std::size_t>> pixel_for(const Image& image,
     return std::make_pair(x, y);
 }
 
-void accumulate(Image& image, const Arrivals::PlaneArrival& arrival) {
-    const std::optional<std::pair<std::size_t, std::size_t>> pixel =
-        pixel_for(image, arrival.plane_position);
+void accumulate(Image& image, const Eigen::Vector2d& image_position) {
+    const std::optional<std::pair<std::size_t, std::size_t>> pixel = pixel_for(image, image_position);
     if (!pixel.has_value()) {
         return;
     }
     image.at(pixel->first, pixel->second) += 1.0;
+}
+
+void accumulate(Image& image, const std::vector<Eigen::Vector2d>& image_positions) {
+    for (const Eigen::Vector2d& position : image_positions) {
+        accumulate(image, position);
+    }
+}
+
+void accumulate(Image& image, const Arrivals::PlaneArrival& arrival) {
+    accumulate(image, arrival.plane_position);
 }
 
 void accumulate(Image& image, const std::vector<Arrivals::PlaneArrival>& arrivals) {
@@ -38,12 +47,22 @@ void accumulate(Image& image, const std::vector<Arrivals::PlaneArrival>& arrival
     }
 }
 
-Image form_image(const std::vector<Arrivals::PlaneArrival>& arrivals, std::size_t width,
-                 std::size_t height, double physical_extent) {
-    const double half_extent = 0.5 * physical_extent;
+Image form_image(const std::vector<Eigen::Vector2d>& image_positions, std::size_t width,
+                 std::size_t height, double coordinate_extent) {
+    const double half_extent = 0.5 * coordinate_extent;
     Image image(width, height, -half_extent, half_extent, -half_extent, half_extent);
-    accumulate(image, arrivals);
+    accumulate(image, image_positions);
     return image;
+}
+
+Image form_image(const std::vector<Arrivals::PlaneArrival>& arrivals, std::size_t width,
+                 std::size_t height, double coordinate_extent) {
+    std::vector<Eigen::Vector2d> positions;
+    positions.reserve(arrivals.size());
+    for (const Arrivals::PlaneArrival& arrival : arrivals) {
+        positions.push_back(arrival.plane_position);
+    }
+    return form_image(positions, width, height, coordinate_extent);
 }
 
 } // namespace Imaging::ImageFormation

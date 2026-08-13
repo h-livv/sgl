@@ -15,8 +15,9 @@ This document answers the conceptual questions first.
 | Are the rays parallel? | **Optional.** Default is a **point-source fan**. Use `--ray-model parallel` for a parallel beam. |
 | Uniform random rays? | **No.** Sampling is **deterministic**, not random. |
 | What is sampled? | A **1D linear sweep in impact parameter** `b`, in one orbital plane. |
-| How does a 2D ring appear? | After integration, on-axis arrivals are **rotated about the optical axis** by symmetry. |
-| How is the image made? | Each 2D arrival adds **+1** to one pixel; the grid is then **normalized by its max**. |
+| How does a 2D ring appear? | After finding the **observer-hit ray**, its angular direction is **rotated about the optical axis** by symmetry. |
+| What coordinate is imaged? | **Observer-centered gnomonic angular coordinates** `(u_ang, v_ang) = (tan θ_right, tan θ_up)`, not screen-plane hit positions. |
+| How is the image made? | Each 2D angular sample adds **+1** to one pixel; the grid is then **normalized by its max**. |
 
 ---
 
@@ -81,8 +82,8 @@ b_i = b_min + (i / (N − 1)) · (b_max − b_min)     for i = 0 … N−1
 
 Canonical defaults (see `experiments/canonical_sgl_image.cpp`):
 
-- `N = ray_count = 41`
-- `b_min = 10.2`, `b_max = 11.6` (in geometrized units with Schwarzschild radius `rs = 1`)
+- `N = ray_count = 801` (used to scan `residual_u(b)` for observer-hit roots)
+- `b_min = 2.0`, `b_max = 20.0` (in geometrized units with Schwarzschild radius `rs = 1`)
 
 Same inputs always produce the same rays and the same image.
 
@@ -140,42 +141,51 @@ last two integration states).
 
 ---
 
-## 4. From a line of hits to a ring (azimuthal expansion)
+## 4. From one observer-hit direction to a ring
 
-Schwarzschild gravity is **spherically symmetric**, and the canonical setup is
-**axisymmetric** about the optical axis. An equatorial solution at radius `|u|` on
-the plane can be rotated about that axis to any angle without changing the physics.
+The canonical image is **not** formed from every plane-crossing position. Instead:
 
-The code does exactly that in `expand_azimuthally` — **no extra integration**:
+1. Scan `residual_u(b) = image_plane.to_plane_coordinates(arrival).x()` over the `b` grid.
+2. Find zero-crossing brackets where the ray crosses the observer point on the plane.
+3. Refine each candidate with bisection; select the **primary/direct** branch (smallest positive angular radius).
+4. Convert the refined arrival’s incoming direction to **gnomonic angular coordinates**:
 
 ```text
-For each arrived ray at plane coordinate (u, 0):
+s = −normalize(world_direction)          # sky direction toward source
+u_ang = dot(s, right) / dot(s, forward)
+v_ang = dot(s, up)    / dot(s, forward)
+```
+
+5. Expand the signed equatorial angular coordinate azimuthally (on-axis only):
+
+```text
+For the selected signed u_ang:
 
     for k = 0 … N_az − 1:
         ψ = 2π k / N_az
-        emit point (u cos ψ,  u sin ψ)
+        emit (u_ang cos ψ,  u_ang sin ψ)
 ```
 
-Canonical default: `azimuth_count = 720` → each equatorial hit becomes 720 points
-on a circle of radius `|u|`.
+Canonical default: `azimuth_count = 720`.
+
+The true angular radius is `θ = atan(sqrt(u_ang² + v_ang²))`. For small angles,
+`sqrt(u_ang² + v_ang²) ≈ θ` in radians. The equivalent screen radius is
+`R_equiv = D · sqrt(u_ang² + v_ang²)` where `D` is the observer axial distance.
 
 ```text
-After azimuthal expansion:
+After angular azimuthal expansion:
 
-        v
+        v_ang
         ▲
         │    ● ●
         │  ●     ●
-  ──────●─────────●────► u
+  ──────●─────────●────► u_ang
         │  ●     ●
         │    ● ●
 ```
 
-Different impact parameters produce different radii `|u(b)|`. Together they form a
-**thin annular band** — the discrete version of the Einstein ring.
-
-This is a **symmetry reconstruction**, not a claim that 720 independent geodesics
-were flown at every azimuth.
+This is a **symmetry reconstruction** on the observer sky, not a claim that 720
+independent geodesics were flown at every azimuth.
 
 ---
 
@@ -185,19 +195,19 @@ Image formation is deliberately simple: **count rays in pixels**.
 
 ### Step A — build an empty grid
 
-`form_image` creates a square `Image` covering physical plane coordinates
+`form_image` creates a square `Image` covering **angular tangent-plane coordinates**
 
 ```text
-u, v ∈ [−extent/2, +extent/2]
+u_ang, v_ang ∈ [−extent/2, +extent/2]
 ```
 
-Canonical: `extent = 40` → `u,v ∈ [−20, 20]`, resolution `512 × 512`.
+Canonical: `extent = 0.8` (dimensionless), resolution `1024 × 1024`.
 
 Each pixel stores a scalar intensity (initially 0).
 
 ### Step B — map each 2D arrival to a pixel
 
-For a point `(u, v)`:
+For a point `(u_ang, v_ang)`:
 
 ```text
 x = floor( (u − u_min) / du )
@@ -213,7 +223,7 @@ Arrivals outside the image rectangle are ignored.
 intensity[x, y] += 1
 ```
 
-Every in-bounds `PlaneArrival` contributes the same weight **1**.
+Every in-bounds angular sample contributes the same weight **1**.
 There is no magnification weighting, flux calibration, PSF, or blur.
 
 ### Step D — normalize
@@ -242,17 +252,17 @@ landed, after max-normalization so the brightest pixels are white.
 ```text
 Point source
     │
-    │  pick N values of impact parameter b  (linear, deterministic)
+    │  scan impact parameter b for observer-hit root (residual_u = 0)
     ▼
-N null geodesics in ONE equatorial plane
+Refined observer-hit null geodesic
     │
-    │  RK4 integration in Schwarzschild spacetime
+    │  map incoming direction → gnomonic angular (u_ang, v_ang)
     ▼
-N arrivals on a LINE in the image plane: (u(b), 0)
+One equatorial angular coordinate
     │
-    │  rotate each hit about the optical axis (azimuth_count angles)
+    │  rotate about optical axis (azimuth_count angles)
     ▼
-Many points on CIRCLES → annular cloud
+Many points on CIRCLE in angular coordinates → annular cloud
     │
     │  bin into pixels: intensity += 1
     │  divide by max
@@ -267,10 +277,10 @@ Einstein-ring image (CSV + PGM)
 If you remember only this:
 
 1. **Source model:** default is one point source; optional `--ray-model parallel` uses a parallel beam on the launch plane.
-2. **Sampling:** uniform **in impact parameter** on a 1D grid (even spacing in `b`), deterministic.
-3. **Propagation:** real curved null geodesics for that 1D family only.
-4. **Ring fill:** spherical symmetry → rotate line hits into circles (on-axis only).
-5. **Pixels:** unweighted ray counts, then normalize by the brightest pixel.
+2. **Sampling:** uniform **in impact parameter** on a 1D grid for root bracketing (even spacing in `b`), deterministic.
+3. **Propagation:** real curved null geodesics; the canonical image uses the **observer-hit** ray’s incoming direction.
+4. **Ring fill:** spherical symmetry → rotate one angular coordinate into a circle (on-axis only).
+5. **Pixels:** unweighted ray counts on angular coordinates, then normalize by the brightest pixel.
 
 That is the entire underlying process behind the ring in the current pipeline.
 
@@ -294,9 +304,10 @@ To avoid common misunderstandings:
 
 | Step | Primary location |
 |---|---|
-| Impact-parameter grid | `physics/rays/RaySampler.cpp` |
+| Impact-parameter grid / root scan | `experiments/canonical_sgl_image.cpp` |
 | Null initial state from `b` | `physics/schwarzschild/InitialStates.cpp` (`build_null_scatter`) |
 | Integration + plane hit | `physics/arrivals/ArrivalCollector.cpp` |
-| Line → ring | `physics/arrivals/AzimuthalExpansion.cpp` |
+| Angular coordinates | `physics/arrivals/ObserverAngularCoordinates.cpp` |
+| Azimuthal angular expansion | `physics/arrivals/ObserverAngularCoordinates.cpp` |
 | Pixel binning | `physics/imaging/ImageFormation.cpp` |
 | Runnable experiment | `experiments/canonical_sgl_image.cpp` |

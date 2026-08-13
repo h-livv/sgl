@@ -1,5 +1,5 @@
 #include <arrivals/ArrivalCollector.h>
-#include <arrivals/AzimuthalExpansion.h>
+#include <arrivals/ObserverAngularCoordinates.h>
 #include <geometry/ImagePlane.h>
 #include <geometry/Lens.h>
 #include <geometry/Observer.h>
@@ -38,12 +38,13 @@ enum class RayModel {
 
 struct CliOptions {
     std::string output_dir = "outputs/sgl_forward";
-    int ray_count = 41;
+    int ray_count = 801;
     int azimuth_count = 720;
-    int resolution = 512;
-    double extent = 40.0;
-    double b_min = 10.2;
-    double b_max = 11.6;
+    int resolution = 1024;
+    // Tangent-plane angular extent (dimensionless gnomonic coordinates).
+    double extent = 0.8;
+    double b_min = 2.0;
+    double b_max = 20.0;
     double step_size = 0.01;
     int max_steps = 300000;
     double source_distance = 30.0;
@@ -52,7 +53,38 @@ struct CliOptions {
     // Perpendicular distance from the focal line / optical axis (along +X).
     // Zero is on-axis (Einstein ring); nonzero is an off-axis observer.
     double observer_distance = 0.0;
+    double observer_hit_tolerance = 1e-6;
+    int max_root_iterations = 60;
     RayModel ray_model = RayModel::Point;
+};
+
+struct ObserverHit {
+    double b = 0.0;
+    Arrivals::RayArrival arrival;
+    double residual_u = 0.0;
+};
+
+struct ObserverHitBracket {
+    ObserverHit left;
+    ObserverHit right;
+    int index = 0;
+};
+
+struct ObserverHitCandidate {
+    ObserverHit hit;
+    Eigen::Vector2d angular_coordinate = Eigen::Vector2d::Zero();
+    double angular_radius = 0.0;
+    int bracket_index = 0;
+    bool selected = false;
+};
+
+struct SelectedObserverHit {
+    ObserverHit hit;
+    Eigen::Vector2d angular_coordinate = Eigen::Vector2d::Zero();
+    double angular_radius = 0.0;
+    int selected_bracket_index = -1;
+    int candidate_count = 0;
+    std::vector<ObserverHitCandidate> candidates;
 };
 
 const char* ray_model_name(RayModel model) {
@@ -71,15 +103,17 @@ void print_usage(std::ostream& out) {
         << "  --ray-count <int>               Number of impact-parameter samples (default: 41)\n"
         << "  --azimuth-count <int>           Azimuthal expansion count (default: 720)\n"
         << "  --resolution <int>              Square image resolution (default: 512)\n"
-        << "  --extent <double>               Physical image extent (default: 40.0)\n"
-        << "  --b-min <double>                Minimum impact parameter (default: 10.2)\n"
-        << "  --b-max <double>                Maximum impact parameter (default: 11.6)\n"
+        << "  --extent <double>               Angular tangent-plane extent (default: 0.8)\n"
+        << "  --b-min <double>                Minimum impact parameter (default: 2.0)\n"
+        << "  --b-max <double>                Maximum impact parameter (default: 20.0)\n"
         << "  --step-size <double>            Integration step size (default: 0.01)\n"
         << "  --max-steps <int>               Maximum integration steps (default: 300000)\n"
         << "  --source-distance <double>      Source/launch-plane distance from lens along -Z (default: 30.0)\n"
         << "  --observer-axial-distance <double> Observer distance from lens along +Z (default: 30.0)\n"
         << "  --observer-distance <double>    Perpendicular distance from focal line (default: 0.0)\n"
         << "  --ray-model <point|parallel>    Ray launch model (default: point)\n"
+        << "  --observer-hit-tolerance <double> Observer-hit residual tolerance (default: 1e-6)\n"
+        << "  --max-root-iterations <int>     Max bisection iterations per root (default: 60)\n"
         << "  --help                          Show this help message\n";
 }
 
@@ -197,6 +231,19 @@ bool parse_args(int argc, char** argv, CliOptions& options) {
             }
             continue;
         }
+        if (arg == "--observer-hit-tolerance") {
+            if (i + 1 >= argc ||
+                !parse_double(argv[++i], arg, options.observer_hit_tolerance)) {
+                return false;
+            }
+            continue;
+        }
+        if (arg == "--max-root-iterations") {
+            if (i + 1 >= argc || !parse_int(argv[++i], arg, options.max_root_iterations)) {
+                return false;
+            }
+            continue;
+        }
         if (arg == "--ray-model") {
             if (i + 1 >= argc) {
                 std::cerr << "Missing value for --ray-model\n";
@@ -265,6 +312,193 @@ Rays::RayEnsemble sample_parallel_rays(const Geometry::Lens& lens, double source
     return ensemble;
 }
 
+Rays::RayEnsemble make_single_ray_ensemble(const Problem::PropagationProblem& problem,
+                                           RayModel ray_model, double source_distance,
+                                           double b) {
+    Rays::RayEnsemble ensemble;
+    if (ray_model == RayModel::Point) {
+        const Rays::RaySampler sampler(Rays::RaySamplingConfig{
+            .ray_count = 1, .min_impact_parameter = b, .max_impact_parameter = b});
+        return sampler.sample(problem);
+    }
+    ensemble.add(make_parallel_null_state(problem.lens(), source_distance, b));
+    return ensemble;
+}
+
+double residual_u_for_arrival(const Geometry::ImagePlane& plane,
+                              const Arrivals::RayArrival& arrival) {
+    if (arrival.status != Arrivals::ArrivalStatus::Arrived) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return plane.to_plane_coordinates(arrival.world_position).x();
+}
+
+ObserverHit propagate_one_for_b(const Problem::PropagationProblem& problem,
+                                Schwarzschild::PropagationContext& context,
+                                const Propagation::RadiusBoundTermination& fallback,
+                                const Propagation::IntegrationSettings& settings,
+                                Integration::RK4Integrator& integrator, RayModel ray_model,
+                                double source_distance, double b) {
+    const Rays::RayEnsemble ensemble =
+        make_single_ray_ensemble(problem, ray_model, source_distance, b);
+    const std::vector<Arrivals::RayArrival> arrivals = Arrivals::collect_arrivals(
+        ensemble, problem, context.dynamics(), fallback, settings, integrator,
+        context.correction());
+    ObserverHit hit;
+    hit.b = b;
+    hit.arrival = arrivals.empty() ? Arrivals::RayArrival{} : arrivals.front();
+    hit.residual_u = residual_u_for_arrival(problem.image_plane(), hit.arrival);
+    return hit;
+}
+
+bool is_bracketing_hit(const ObserverHit& left, const ObserverHit& right,
+                       double observer_hit_tolerance) {
+    if (!std::isfinite(left.residual_u) || !std::isfinite(right.residual_u)) {
+        return false;
+    }
+    if (std::abs(left.residual_u) <= observer_hit_tolerance ||
+        std::abs(right.residual_u) <= observer_hit_tolerance) {
+        return true;
+    }
+    return (left.residual_u > 0.0 && right.residual_u < 0.0) ||
+           (left.residual_u < 0.0 && right.residual_u > 0.0);
+}
+
+std::vector<ObserverHitBracket> scan_observer_hit_brackets(
+    const std::vector<ObserverHit>& hits, double observer_hit_tolerance) {
+    std::vector<ObserverHitBracket> brackets;
+    if (hits.empty()) {
+        return brackets;
+    }
+
+    for (std::size_t i = 0; i + 1 < hits.size(); ++i) {
+        if (!is_bracketing_hit(hits[i], hits[i + 1], observer_hit_tolerance)) {
+            continue;
+        }
+        brackets.push_back(ObserverHitBracket{hits[i], hits[i + 1], static_cast<int>(i)});
+    }
+
+    if (hits.size() == 1 &&
+        hits.front().arrival.status == Arrivals::ArrivalStatus::Arrived &&
+        std::abs(hits.front().residual_u) <= observer_hit_tolerance) {
+        brackets.push_back(ObserverHitBracket{hits.front(), hits.front(), 0});
+    }
+    return brackets;
+}
+
+ObserverHit refine_observer_hit_bisection(const ObserverHitBracket& bracket,
+                                          const Problem::PropagationProblem& problem,
+                                          Schwarzschild::PropagationContext& context,
+                                          const Propagation::RadiusBoundTermination& fallback,
+                                          const Propagation::IntegrationSettings& settings,
+                                          Integration::RK4Integrator& integrator,
+                                          RayModel ray_model, double source_distance,
+                                          double observer_hit_tolerance, int max_root_iterations) {
+    ObserverHit left = bracket.left;
+    ObserverHit right = bracket.right;
+
+    if (left.b == right.b) {
+        return left;
+    }
+
+    for (int iteration = 0; iteration < max_root_iterations; ++iteration) {
+        if (std::abs(left.residual_u) <= observer_hit_tolerance) {
+            return left;
+        }
+        if (std::abs(right.residual_u) <= observer_hit_tolerance) {
+            return right;
+        }
+
+        const double mid_b = 0.5 * (left.b + right.b);
+        const ObserverHit mid =
+            propagate_one_for_b(problem, context, fallback, settings, integrator, ray_model,
+                                source_distance, mid_b);
+        if (mid.arrival.status != Arrivals::ArrivalStatus::Arrived ||
+            !std::isfinite(mid.residual_u)) {
+            break;
+        }
+
+        if (std::abs(mid.residual_u) <= observer_hit_tolerance) {
+            return mid;
+        }
+
+        if (is_bracketing_hit(left, mid, observer_hit_tolerance)) {
+            right = mid;
+        } else if (is_bracketing_hit(mid, right, observer_hit_tolerance)) {
+            left = mid;
+        } else {
+            break;
+        }
+    }
+
+    if (std::abs(left.residual_u) <= std::abs(right.residual_u)) {
+        return left;
+    }
+    return right;
+}
+
+SelectedObserverHit select_primary_observer_hit(
+    const std::vector<ObserverHitBracket>& brackets, const Problem::PropagationProblem& problem,
+    const Geometry::Observer& observer, Schwarzschild::PropagationContext& context,
+    const Propagation::RadiusBoundTermination& fallback,
+    const Propagation::IntegrationSettings& settings, Integration::RK4Integrator& integrator,
+    RayModel ray_model, double source_distance, double observer_hit_tolerance,
+    int max_root_iterations) {
+    SelectedObserverHit selection;
+    selection.candidate_count = static_cast<int>(brackets.size());
+
+    constexpr double angular_radius_tie_tolerance = 1e-8;
+    int best_index = -1;
+    double best_radius = std::numeric_limits<double>::infinity();
+    double best_b = std::numeric_limits<double>::infinity();
+
+    for (const ObserverHitBracket& bracket : brackets) {
+        ObserverHitCandidate candidate;
+        candidate.bracket_index = bracket.index;
+        candidate.hit = refine_observer_hit_bisection(
+            bracket, problem, context, fallback, settings, integrator, ray_model, source_distance,
+            observer_hit_tolerance, max_root_iterations);
+
+        const std::optional<Eigen::Vector2d> angular =
+            Arrivals::observer_angular_coordinates(candidate.hit.arrival, observer);
+        if (!angular.has_value()) {
+            candidate.angular_radius = std::numeric_limits<double>::quiet_NaN();
+            selection.candidates.push_back(candidate);
+            continue;
+        }
+
+        candidate.angular_coordinate = *angular;
+        candidate.angular_radius = angular->norm();
+        if (!std::isfinite(candidate.angular_radius) || candidate.angular_radius <= 0.0) {
+            selection.candidates.push_back(candidate);
+            continue;
+        }
+
+        const bool better_radius = candidate.angular_radius + angular_radius_tie_tolerance < best_radius;
+        const bool tie_break =
+            std::abs(candidate.angular_radius - best_radius) <= angular_radius_tie_tolerance &&
+            candidate.hit.b < best_b;
+        if (best_index < 0 || better_radius || tie_break) {
+            best_index = static_cast<int>(selection.candidates.size());
+            best_radius = candidate.angular_radius;
+            best_b = candidate.hit.b;
+        }
+        selection.candidates.push_back(candidate);
+    }
+
+    if (best_index < 0) {
+        return selection;
+    }
+
+    selection.candidates[static_cast<std::size_t>(best_index)].selected = true;
+    const ObserverHitCandidate& chosen = selection.candidates[static_cast<std::size_t>(best_index)];
+    selection.hit = chosen.hit;
+    selection.angular_coordinate = chosen.angular_coordinate;
+    selection.angular_radius = chosen.angular_radius;
+    selection.selected_bracket_index = chosen.bracket_index;
+    return selection;
+}
+
 void write_csv(const std::filesystem::path& path, const Imaging::Image& image) {
     std::ofstream out(path);
     if (!out) {
@@ -314,8 +548,8 @@ void write_pgm(const std::filesystem::path& path, const Imaging::Image& image) {
 
 void write_summary(const std::filesystem::path& path, const CliOptions& options,
                    std::size_t ray_count, std::size_t raw_arrivals, std::size_t arrived_count,
-                   std::size_t plane_arrival_count, double raw_max,
-                   const std::filesystem::path& csv_path,
+                   const SelectedObserverHit& selection, std::size_t angular_sample_count,
+                   double raw_max, const std::filesystem::path& csv_path,
                    const std::filesystem::path& pgm_path) {
     std::ofstream out(path);
     if (!out) {
@@ -323,10 +557,12 @@ void write_summary(const std::filesystem::path& path, const CliOptions& options,
     }
 
     out << "output_dir=" << options.output_dir << '\n';
+    out << "image_observable=observer_angular_gnomonic\n";
     out << "ray_count=" << options.ray_count << '\n';
     out << "azimuth_count=" << options.azimuth_count << '\n';
     out << "resolution=" << options.resolution << '\n';
     out << "extent=" << options.extent << '\n';
+    out << "angular_extent=" << options.extent << '\n';
     out << "b_min=" << options.b_min << '\n';
     out << "b_max=" << options.b_max << '\n';
     out << "step_size=" << options.step_size << '\n';
@@ -334,11 +570,28 @@ void write_summary(const std::filesystem::path& path, const CliOptions& options,
     out << "source_distance=" << options.source_distance << '\n';
     out << "observer_axial_distance=" << options.observer_axial_distance << '\n';
     out << "observer_distance=" << options.observer_distance << '\n';
+    out << "observer_hit_tolerance=" << options.observer_hit_tolerance << '\n';
+    out << "max_root_iterations=" << options.max_root_iterations << '\n';
     out << "ray_model=" << ray_model_name(options.ray_model) << '\n';
     out << "rays_sampled=" << ray_count << '\n';
     out << "raw_arrivals=" << raw_arrivals << '\n';
     out << "arrived_count=" << arrived_count << '\n';
-    out << "plane_arrivals=" << plane_arrival_count << '\n';
+    out << "observer_hit_candidate_count=" << selection.candidate_count << '\n';
+    out << "observer_hit_count="
+        << (selection.selected_bracket_index >= 0 ? 1 : 0) << '\n';
+    out << "selected_observer_hit_bracket_index=" << selection.selected_bracket_index << '\n';
+    out << "selected_observer_hit_b=" << selection.hit.b << '\n';
+    out << "selected_observer_hit_residual_u=" << selection.hit.residual_u << '\n';
+    out << "selected_angular_radius=" << selection.angular_radius << '\n';
+    out << "selected_angular_u=" << selection.angular_coordinate.x() << '\n';
+    out << "selected_angular_v=" << selection.angular_coordinate.y() << '\n';
+    for (std::size_t i = 0; i < selection.candidates.size(); ++i) {
+        const ObserverHitCandidate& candidate = selection.candidates[i];
+        out << "observer_hit_candidate_" << i << "=b:" << candidate.hit.b
+            << ",residual:" << candidate.hit.residual_u << ",rho:" << candidate.angular_radius
+            << ",selected:" << (candidate.selected ? "true" : "false") << '\n';
+    }
+    out << "angular_samples=" << angular_sample_count << '\n';
     out << "raw_image_max=" << raw_max << '\n';
     out << "csv_path=" << csv_path.string() << '\n';
     out << "pgm_path=" << pgm_path.string() << '\n';
@@ -369,6 +622,16 @@ int main(int argc, char** argv) {
     }
     if (options.ray_count > 1 && options.b_max == options.b_min) {
         std::cerr << "Invalid parameter values: b-max must exceed b-min when ray-count > 1.\n";
+        return 1;
+    }
+    if (options.observer_hit_tolerance <= 0.0 || options.max_root_iterations < 1) {
+        std::cerr << "Invalid parameter values: observer-hit-tolerance > 0 and "
+                     "max-root-iterations >= 1 required.\n";
+        return 1;
+    }
+    if (options.observer_distance != 0.0) {
+        std::cerr << "Angular image formation (Fix A) requires on-axis observer "
+                     "(observer-distance == 0).\n";
         return 1;
     }
 
@@ -420,31 +683,45 @@ int main(int argc, char** argv) {
         context.correction());
 
     std::size_t arrived_count = 0;
-    for (const Arrivals::RayArrival& arrival : arrivals) {
+    std::vector<ObserverHit> scan_hits;
+    scan_hits.reserve(arrivals.size());
+    for (std::size_t i = 0; i < arrivals.size(); ++i) {
+        const Arrivals::RayArrival& arrival = arrivals[i];
         if (arrival.status == Arrivals::ArrivalStatus::Arrived) {
             ++arrived_count;
         }
+        const double b = impact_parameter_at(static_cast<int>(i), options.ray_count, options.b_min,
+                                           options.b_max);
+        scan_hits.push_back(ObserverHit{
+            b, arrival, residual_u_for_arrival(problem.image_plane(), arrival)});
     }
 
-    // Azimuthal expansion is valid only on axis (spherical symmetry about the optical
-    // axis). Off-axis observers use the actual plane arrivals only.
-    std::vector<Arrivals::PlaneArrival> plane_arrivals;
-    if (options.observer_distance == 0.0) {
-        plane_arrivals = Arrivals::expand_azimuthally(arrivals, problem.image_plane(),
-                                                      options.azimuth_count);
-    } else {
-        plane_arrivals.reserve(arrived_count);
-        for (const Arrivals::RayArrival& arrival : arrivals) {
-            if (arrival.status != Arrivals::ArrivalStatus::Arrived) {
-                continue;
-            }
-            plane_arrivals.push_back(Arrivals::PlaneArrival{
-                arrival.ray_id, problem.image_plane().to_plane_coordinates(arrival.world_position)});
-        }
+    const std::vector<ObserverHitBracket> brackets =
+        scan_observer_hit_brackets(scan_hits, options.observer_hit_tolerance);
+    if (brackets.empty()) {
+        std::cerr << "No observer-hit root bracketed in [b_min, b_max]. "
+                     "Widen --b-min/--b-max and retry.\n";
+        return 1;
     }
+
+    const SelectedObserverHit selection = select_primary_observer_hit(
+        brackets, problem, observer, context, fallback, settings, integrator, options.ray_model,
+        options.source_distance, options.observer_hit_tolerance, options.max_root_iterations);
+    if (selection.selected_bracket_index < 0) {
+        std::cerr << "No valid primary observer-hit root selected after refinement.\n";
+        return 1;
+    }
+    if (std::abs(selection.hit.residual_u) > options.observer_hit_tolerance) {
+        std::cerr << "Selected observer-hit residual exceeds tolerance: residual_u="
+                  << selection.hit.residual_u << '\n';
+        return 1;
+    }
+
+    const std::vector<Eigen::Vector2d> angular_samples = Arrivals::expand_angular_azimuthally(
+        selection.angular_coordinate.x(), options.azimuth_count);
 
     const Imaging::Image image = Imaging::ImageFormation::form_image(
-        plane_arrivals, static_cast<std::size_t>(options.resolution),
+        angular_samples, static_cast<std::size_t>(options.resolution),
         static_cast<std::size_t>(options.resolution), options.extent);
     const double raw_max = image.max_intensity();
     const Imaging::Image normalized = image.normalized_to_max();
@@ -459,7 +736,7 @@ int main(int argc, char** argv) {
     write_csv(csv_path, normalized);
     write_pgm(pgm_path, normalized);
     write_summary(summary_path, options, ensemble.size(), arrivals.size(), arrived_count,
-                  plane_arrivals.size(), raw_max, csv_path, pgm_path);
+                  selection, angular_samples.size(), raw_max, csv_path, pgm_path);
 
     std::cout << "Wrote " << csv_path << '\n';
     std::cout << "Wrote " << pgm_path << '\n';

@@ -57,6 +57,7 @@ add_library(sgl_arrivals STATIC
     physics/arrivals/PlaneCrossingTermination.cpp
     physics/arrivals/ArrivalCollector.cpp
     physics/arrivals/AzimuthalExpansion.cpp
+    physics/arrivals/ObserverAngularCoordinates.cpp
 )
 target_include_directories(sgl_arrivals PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
 target_link_libraries(sgl_arrivals PUBLIC sgl_rays)
@@ -135,6 +136,18 @@ if(SGL_BUILD_TESTS)
     add_executable(sgl_image_formation tests/image_formation.cpp)
     target_link_libraries(sgl_image_formation PRIVATE sgl_imaging)
     add_test(NAME image_formation COMMAND sgl_image_formation)
+
+    add_executable(sgl_observer_angular_coordinates tests/observer_angular_coordinates.cpp)
+    target_link_libraries(sgl_observer_angular_coordinates PRIVATE sgl_arrivals)
+    add_test(NAME observer_angular_coordinates COMMAND sgl_observer_angular_coordinates)
+
+    add_executable(sgl_angular_image_pipeline tests/angular_image_pipeline.cpp)
+    target_link_libraries(sgl_angular_image_pipeline PRIVATE sgl_imaging)
+    add_test(NAME angular_image_pipeline COMMAND sgl_angular_image_pipeline)
+
+    add_executable(sgl_source_distance_angular_behavior tests/source_distance_angular_behavior.cpp)
+    target_link_libraries(sgl_source_distance_angular_behavior PRIVATE sgl_imaging)
+    add_test(NAME source_distance_angular_behavior COMMAND sgl_source_distance_angular_behavior)
 
     add_executable(sgl_canonical_image_pipeline tests/canonical_image_pipeline.cpp)
     target_link_libraries(sgl_canonical_image_pipeline PRIVATE sgl_imaging)
