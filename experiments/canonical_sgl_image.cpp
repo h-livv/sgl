@@ -585,10 +585,21 @@ void write_summary(const std::filesystem::path& path, const CliOptions& options,
     out << "selected_angular_radius=" << selection.angular_radius << '\n';
     out << "selected_angular_u=" << selection.angular_coordinate.x() << '\n';
     out << "selected_angular_v=" << selection.angular_coordinate.y() << '\n';
+    // Primary Einstein-ring radius: true angular radius from the observer-hit root.
+    // theta_E = atan(rho) with rho the gnomonic tangent-plane radius. Not derived from
+    // image pixels or radial histograms.
+    const double theta_E = std::atan(selection.angular_radius);
+    const double R_equiv = options.observer_axial_distance * selection.angular_radius;
+    out << "selected_angular_theta=" << theta_E << '\n';
+    out << "theta_E=" << theta_E << '\n';
+    out << "R_equiv=" << R_equiv << '\n';
+    out << "ring_radius_source=observer_hit_root\n";
     for (std::size_t i = 0; i < selection.candidates.size(); ++i) {
         const ObserverHitCandidate& candidate = selection.candidates[i];
+        const double candidate_theta = std::atan(candidate.angular_radius);
         out << "observer_hit_candidate_" << i << "=b:" << candidate.hit.b
             << ",residual:" << candidate.hit.residual_u << ",rho:" << candidate.angular_radius
+            << ",theta:" << candidate_theta
             << ",selected:" << (candidate.selected ? "true" : "false") << '\n';
     }
     out << "angular_samples=" << angular_sample_count << '\n';

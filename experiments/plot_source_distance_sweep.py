@@ -268,7 +268,8 @@ def rho_from_summary(run: SweepRun) -> float:
     """Gnomonic tangent-plane radius rho = sqrt(u_ang^2 + v_ang^2).
 
     Primary source: selected_angular_radius from the observer-hit refinement
-    stage. Falls back to hypot(u,v) from summary components, then image centroid.
+    stage. Falls back to hypot(u,v) from summary components. Image-derived
+    radii are never used as the primary Einstein-ring radius.
     """
     rho = run.summary.selected_angular_radius
     if rho is not None and math.isfinite(rho) and rho > 0.0:
@@ -281,12 +282,20 @@ def rho_from_summary(run: SweepRun) -> float:
         if candidate > 0.0:
             return candidate
 
-    return image_intensity_weighted_rho(run)
+    raise SystemExit(
+        f"{run.directory}: missing selected_angular_radius in run_summary.txt; "
+        "cannot form a direct ring-radius observable from image pixels."
+    )
 
 
-def theta_from_rho(rho: float) -> float:
-    """True angular radius theta = atan(rho) for gnomonic coordinates."""
-    return math.atan(rho)
+def theta_from_summary(run: SweepRun) -> float:
+    """True angular Einstein radius theta_E = atan(rho) from the observer-hit root."""
+    text = run.summary.extra.get("theta_E") or run.summary.extra.get("selected_angular_theta")
+    if text is not None:
+        value = float(text)
+        if math.isfinite(value) and value > 0.0:
+            return value
+    return math.atan(rho_from_summary(run))
 
 
 def equivalent_ring_radius(run: SweepRun, rho: float) -> float:
@@ -348,7 +357,7 @@ def image_intensity_weighted_rho(run: SweepRun) -> float:
 
 def measure_run(run: SweepRun) -> dict[str, float]:
     rho = rho_from_summary(run)
-    theta = theta_from_rho(rho)
+    theta = theta_from_summary(run)
     return {
         "rho": rho,
         "theta": theta,
