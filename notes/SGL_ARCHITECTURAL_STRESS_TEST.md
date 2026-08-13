@@ -1,5 +1,10 @@
 # SGL Architectural Stress Test
 
+> **Historical snapshot.** Phase 3 stress test against the kernel-era architecture
+> (`SimulationPipeline` / `TrajectorySolver`). The current tree uses `Propagation::propagate`,
+> ensemble OpenMP, and two image executables. Living docs:
+> [`docs/SGL_FORWARD_PIPELINE.md`](../docs/SGL_FORWARD_PIPELINE.md).
+
 Phase 3 adversarial stress test. This document does not propose implementation
 steps and does not prescribe refactors. It tests whether the architecture that
 exists now can absorb several years of likely scientific expansion.

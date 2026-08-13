@@ -1,5 +1,10 @@
 # SGL Architecture Reconstruction
 
+> **Historical snapshot.** Phase 2 analysis of an earlier kernel-centric tree.
+> Not the current 1D/2D image pipeline. Living docs:
+> [`docs/SGL_FORWARD_PIPELINE.md`](../docs/SGL_FORWARD_PIPELINE.md),
+> [`docs/HOW_THE_EINSTEIN_RING_IS_FORMED.md`](../docs/HOW_THE_EINSTEIN_RING_IS_FORMED.md).
+
 Phase 2 architectural reconstruction. This is an analysis artifact, not the
 final architectural review.
 

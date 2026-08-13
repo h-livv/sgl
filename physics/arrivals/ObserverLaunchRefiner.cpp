@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 
 namespace Arrivals {
 namespace {
@@ -279,14 +280,21 @@ refine_observer_launches(const Problem::PropagationProblem& problem,
         sampler.samples(), search_arrivals, problem.image_plane(),
         sampler.config().samples_per_axis);
 
+    std::vector<std::optional<RefinedObserverHit>> per_seed(seeds.size());
+#if defined(_OPENMP)
+#pragma omp parallel for schedule(dynamic) if (seeds.size() > 1)
+#endif
+    for (std::size_t i = 0; i < seeds.size(); ++i) {
+        per_seed[i] = refine_launch_to_observer(problem, sampler, seeds[i].x(), seeds[i].y(),
+                                                config, context, fallback, settings, integrator,
+                                                static_cast<int>(i));
+    }
+
     std::vector<RefinedObserverHit> refined;
     refined.reserve(seeds.size());
-    for (std::size_t i = 0; i < seeds.size(); ++i) {
-        const std::optional<RefinedObserverHit> hit = refine_launch_to_observer(
-            problem, sampler, seeds[i].x(), seeds[i].y(), config, context, fallback, settings,
-            integrator, static_cast<int>(i));
-        if (hit.has_value()) {
-            refined.push_back(*hit);
+    for (std::size_t i = 0; i < per_seed.size(); ++i) {
+        if (per_seed[i].has_value()) {
+            refined.push_back(*per_seed[i]);
         }
     }
 
@@ -297,7 +305,15 @@ refine_observer_launches(const Problem::PropagationProblem& problem,
 
     std::sort(refined.begin(), refined.end(), [](const RefinedObserverHit& a,
                                                  const RefinedObserverHit& b) {
-        return a.hit.plane_residual.norm() < b.hit.plane_residual.norm();
+        const double na = a.hit.plane_residual.norm();
+        const double nb = b.hit.plane_residual.norm();
+        if (na < nb) {
+            return true;
+        }
+        if (nb < na) {
+            return false;
+        }
+        return a.seed_index < b.seed_index;
     });
 
     std::vector<RefinedObserverHit> unique;

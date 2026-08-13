@@ -1,5 +1,7 @@
 #include "EnsemblePropagator.h"
 
+#include <cstddef>
+
 namespace Rays {
 
 RayOutcomes propagate_ensemble(const RayEnsemble& ensemble,
@@ -8,11 +10,14 @@ RayOutcomes propagate_ensemble(const RayEnsemble& ensemble,
                                const Propagation::IntegrationSettings& settings,
                                const Integration::Integrator& integrator,
                                const Propagation::StepCorrection& correction) {
-    RayOutcomes outcomes;
-    outcomes.reserve(ensemble.size());
-    for (const Ray& ray : ensemble) {
-        outcomes.push_back(Propagation::propagate(ray.initial_state, dynamics, termination,
-                                                  settings, integrator, correction));
+    const std::size_t n = ensemble.size();
+    RayOutcomes outcomes(n);
+#if defined(_OPENMP)
+#pragma omp parallel for schedule(dynamic) if (n > 1)
+#endif
+    for (std::size_t i = 0; i < n; ++i) {
+        outcomes[i] = Propagation::propagate(ensemble.at(i).initial_state, dynamics, termination,
+                                             settings, integrator, correction);
     }
     return outcomes;
 }

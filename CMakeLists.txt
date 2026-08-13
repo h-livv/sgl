@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Eigen3 CONFIG REQUIRED)
+find_package(OpenMP)
 
 # Schwarzschild GR / geodesic numerical engine (extracted from Penrose).
 set(SGL_PHYSICS_SOURCES
@@ -51,6 +52,9 @@ add_library(sgl_rays STATIC
 )
 target_include_directories(sgl_rays PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
 target_link_libraries(sgl_rays PUBLIC sgl_geometry sgl_physics)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(sgl_rays PUBLIC OpenMP::OpenMP_CXX)
+endif()
 
 # Observer-plane arrivals. Consumes the ensemble path; the kernel never depends on it.
 add_library(sgl_arrivals STATIC
@@ -63,6 +67,9 @@ add_library(sgl_arrivals STATIC
 )
 target_include_directories(sgl_arrivals PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
 target_link_libraries(sgl_arrivals PUBLIC sgl_rays)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(sgl_arrivals PUBLIC OpenMP::OpenMP_CXX)
+endif()
 
 # Scientific image formation from plane arrivals.
 add_library(sgl_imaging STATIC
@@ -125,6 +132,10 @@ if(SGL_BUILD_TESTS)
     add_executable(sgl_ensemble_propagation tests/ensemble_propagation.cpp)
     target_link_libraries(sgl_ensemble_propagation PRIVATE sgl_rays)
     add_test(NAME ensemble_propagation COMMAND sgl_ensemble_propagation)
+
+    add_executable(sgl_ensemble_parallel_invariance tests/ensemble_parallel_invariance.cpp)
+    target_link_libraries(sgl_ensemble_parallel_invariance PRIVATE sgl_rays)
+    add_test(NAME ensemble_parallel_invariance COMMAND sgl_ensemble_parallel_invariance)
 
     add_executable(sgl_arrival_localization tests/arrival_localization.cpp)
     target_link_libraries(sgl_arrival_localization PRIVATE sgl_arrivals)

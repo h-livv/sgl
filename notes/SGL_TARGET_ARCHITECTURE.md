@@ -1,5 +1,10 @@
 # SGL Target Architecture
 
+> **Historical snapshot.** Phase 5 destination architecture. It is not an
+> inventory of the current repo (which now has split libraries, 1D and 2D image
+> paths, and optional OpenMP). Living docs:
+> [`docs/SGL_FORWARD_PIPELINE.md`](../docs/SGL_FORWARD_PIPELINE.md).
+
 **Phase 5 artifact. Architectural destination — not an implementation path.**
 
 This document derives the minimum architectural structure necessary for SGL to evolve

@@ -1,5 +1,10 @@
 # Extraction inventory
 
+> **Historical snapshot.** Lists what was copied from Penrose at extraction time.
+> The current repo also contains geometry, ray ensembles, arrivals, 1D/2D image
+> executables, OpenMP, and tests. Living docs:
+> [`docs/SGL_FORWARD_PIPELINE.md`](../docs/SGL_FORWARD_PIPELINE.md), [`README.md`](../README.md).
+
 ## Included (reusable GR foundation)
 
 - Geodesic state, metric interface, Schwarzschild parameters

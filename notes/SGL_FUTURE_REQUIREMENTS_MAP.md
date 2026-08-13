@@ -1,5 +1,11 @@
 # SGL Future Requirements Map
 
+> **Historical snapshot.** Phase 4 long-term requirements. “Current support”
+> judgements in this file refer to the kernel-era tree, not today’s 1D/2D image
+> paths, observer-hit refinement, or OpenMP. Living docs:
+> [`docs/SGL_FORWARD_PIPELINE.md`](../docs/SGL_FORWARD_PIPELINE.md),
+> [`README.md`](../README.md).
+
 **Phase 4 artifact. Requirements and architectural-stress definition — not a design.**
 
 This document defines the long-term target that the SGL architecture must eventually

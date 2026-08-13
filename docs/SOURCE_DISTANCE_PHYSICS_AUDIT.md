@@ -1,10 +1,27 @@
 # Source-Distance Physics Audit
 
-This document audits the current source-distance experiment as a physics and
-numerical-validity question. It documents what the repository currently computes,
-why the measured ring-like radius decreases with increasing source distance, and
-what should be changed if the intended observable is the physical Einstein-ring
-radius.
+> **Status (current tree).** This audit describes an earlier **screen-intersection**
+> 1D experiment: fixed-`b` families, plane-crossing coordinates, azimuthal copies of
+> those plane hits, and a measured radius that decreased with source distance.
+>
+> The **current** 1D executable implements the audit’s Fix A: the image is an
+> **observer-centered gnomonic angular** map of the **observer-hit** geodesic
+> (`observer_angular_coordinates` + `expand_angular_azimuthally`), not a bin of
+> arbitrary plane crossings. The 2D executable is a parallel launch-plane beam;
+> `--source-distance` is the launch-plane location, and only Newton-refined
+> observer hits are imaged. See
+> [HOW_THE_EINSTEIN_RING_IS_FORMED.md](HOW_THE_EINSTEIN_RING_IS_FORMED.md) and
+> [SGL_FORWARD_PIPELINE.md](SGL_FORWARD_PIPELINE.md).
+>
+> The measured sequences and hypotheses below are retained as the record of that
+> earlier observable. They are not a description of `sgl_canonical_sgl_image` or
+> `sgl_true_2d_sgl_image` as they stand today.
+
+This document audits the source-distance experiment as a physics and
+numerical-validity question **as it was implemented when the audit was written**.
+It documents what that experiment computed, why the measured ring-like radius
+decreased with increasing source distance, and what should be changed if the
+intended observable is the physical Einstein-ring radius.
 
 No code changes are implemented here.
 

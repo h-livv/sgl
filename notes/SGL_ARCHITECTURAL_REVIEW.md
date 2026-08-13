@@ -1,6 +1,13 @@
 # SGL Architectural Review
 
-**Permanent architectural reference for the SGL project.**
+> **Historical snapshot.** This review’s **CURRENT** sections describe the
+> architecture at the end of the six-phase investigation (kernel + early
+> extraction). They are **not** a description of the tree today (1D observer-hit
+> angular images, true-2D search/Newton, OpenMP). For the live pipeline see
+> [`docs/SGL_FORWARD_PIPELINE.md`](../docs/SGL_FORWARD_PIPELINE.md) and
+> [`docs/HOW_THE_EINSTEIN_RING_IS_FORMED.md`](../docs/HOW_THE_EINSTEIN_RING_IS_FORMED.md).
+
+**Permanent architectural reference for the SGL project (as of the investigation).**
 
 This document is the synthesis of a six-phase architectural investigation. It is written to
 be read by a technically competent person with no prior knowledge of SGL, of the Penrose

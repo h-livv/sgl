@@ -1,5 +1,10 @@
 # Architecture Reconstruction Notes
 
+> **Historical snapshot.** Written during early extraction (kernel-only tree,
+> `sgl_null_smoke`, no image pipeline). It is not the current implementation.
+> Living docs: [`docs/HOW_THE_EINSTEIN_RING_IS_FORMED.md`](../docs/HOW_THE_EINSTEIN_RING_IS_FORMED.md),
+> [`docs/SGL_FORWARD_PIPELINE.md`](../docs/SGL_FORWARD_PIPELINE.md), [`README.md`](../README.md).
+
 **Internal factual reconstruction. Phase 1 — repository reconnaissance only.**
 Not an architectural review. No recommendations. Implementation treated as source of truth.
 
