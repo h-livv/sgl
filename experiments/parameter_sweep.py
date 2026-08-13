@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Thin orchestrator for reproducible parameter sweeps of sgl_canonical_sgl_image.
+"""Thin orchestrator for reproducible parameter sweeps.
+
+On-axis 1D sweeps use sgl_canonical_sgl_image. Off-axis observer-distance
+sweeps use sgl_true_2d_sgl_image, because the 1D symmetry-reduced path rejects
+nonzero observer-distance.
 
 Edit the configuration block below, then run:
 
@@ -24,13 +28,14 @@ from typing import Any
 # User-editable configuration
 # ---------------------------------------------------------------------------
 
-# Path relative to the repository root (directory containing this file's parent).
-EXECUTABLE = "build/sgl_canonical_sgl_image"
+# Paths relative to the repository root (directory containing this file's parent).
+EXECUTABLE_1D = "build/sgl_canonical_sgl_image"
+EXECUTABLE_2D = "build/sgl_true_2d_sgl_image"
 
-# Fixed parameters for every run in the sweep. Keys are CLI flag names WITHOUT
+# Fixed parameters for every on-axis 1D run. Keys are CLI flag names WITHOUT
 # the leading "--" and MUST match sgl_canonical_sgl_image --help.
-BASE_PARAMS = {
-    "ray-count": 101,
+BASE_PARAMS_1D = {
+    "ray-count": 31,
     "azimuth-count": 360,
     "resolution": 256,
     "extent": 0.8,
@@ -49,24 +54,42 @@ BASE_PARAMS = {
     "ray-model": "parallel",
 }
 
+# Off-axis / true-2D parameters. Keys MUST match sgl_true_2d_sgl_image --help.
+# N=11 is the recommended Cartesian search density: cell width ~3.6, enough
+# distinct launch-plane azimuths without the 21x21 search tax.
+BASE_PARAMS_2D = {
+    "samples-per-axis": 51,
+    "resolution": 64,
+    "extent": 0.8,
+    "b-max": 20.0,
+    "step-size": 0.01,
+    "max-steps": 300000,
+    "source-distance": 10.0,
+    "observer-axial-distance": 30.0,
+    "observer-distance": 0.0,
+    "observer-hit-tolerance": 1e-6,
+    "max-root-iterations": 12,
+    "ray-model": "parallel",
+}
+
 # Active sweep — change only these three fields to switch experiments.
 # Use the string "inf" in a source-distance sweep for source-at-infinity (parallel rays).
 #SWEEP_NAME = "source_distance"
 #SWEEP_PARAMETER = "source-distance"
 #SWEEP_VALUES = [20, 50, 100, 200, 500, 1000, "inf"]
 
-# Alternate example: sweep perpendicular distance from the focal line.
+# Off-axis sweep. The 1D canonical executable rejects observer-distance != 0,
+# so this automatically selects sgl_true_2d_sgl_image.
 SWEEP_NAME = "observer_distance"
 SWEEP_PARAMETER = "observer-distance"
-SWEEP_VALUES = [0, 5, 10]
+SWEEP_VALUES = [0.0, 0.5, 1.0, 1.5, 2.0]
 
 OUTPUT_ROOT = "outputs/sweeps"
 
 SOURCE_AT_INFINITY = "inf"
 
-# Known CLI parameters accepted by sgl_canonical_sgl_image (excluding --output-dir,
-# which the orchestrator sets per run, and --help).
-KNOWN_CLI_PARAMS = frozenset(
+# Known CLI parameters (excluding --output-dir and --help).
+KNOWN_CLI_PARAMS_1D = frozenset(
     {
         "ray-count",
         "azimuth-count",
@@ -80,6 +103,22 @@ KNOWN_CLI_PARAMS = frozenset(
         "observer-axial-distance",
         "observer-distance",
         "ray-model",
+        "observer-hit-tolerance",
+        "max-root-iterations",
+    }
+)
+
+KNOWN_CLI_PARAMS_2D = frozenset(
+    {
+        "samples-per-axis",
+        "resolution",
+        "extent",
+        "b-max",
+        "step-size",
+        "max-steps",
+        "source-distance",
+        "observer-axial-distance",
+        "observer-distance",
         "observer-hit-tolerance",
         "max-root-iterations",
     }
@@ -126,19 +165,44 @@ def is_source_at_infinity(value: Any) -> bool:
     return False
 
 
+def uses_2d_path() -> bool:
+    """Off-axis geometry is invalid for the 1D symmetry-reduced executable."""
+    if SWEEP_PARAMETER == "observer-distance":
+        return True
+    observer_distance = BASE_PARAMS_1D.get("observer-distance", 0.0)
+    try:
+        return float(observer_distance) != 0.0
+    except (TypeError, ValueError):
+        return False
+
+
+def active_executable_relpath() -> str:
+    return EXECUTABLE_2D if uses_2d_path() else EXECUTABLE_1D
+
+
+def active_base_params() -> dict[str, Any]:
+    return dict(BASE_PARAMS_2D if uses_2d_path() else BASE_PARAMS_1D)
+
+
+def active_known_params() -> frozenset[str]:
+    return KNOWN_CLI_PARAMS_2D if uses_2d_path() else KNOWN_CLI_PARAMS_1D
+
+
 def validate_configuration() -> None:
-    unknown_base = sorted(set(BASE_PARAMS) - KNOWN_CLI_PARAMS)
+    known = active_known_params()
+    base_params = active_base_params()
+    unknown_base = sorted(set(base_params) - known)
     if unknown_base:
         raise SystemExit(
             "BASE_PARAMS contains unknown CLI parameter(s): "
             + ", ".join(unknown_base)
             + "\nAllowed: "
-            + ", ".join(sorted(KNOWN_CLI_PARAMS))
+            + ", ".join(sorted(known))
         )
-    if SWEEP_PARAMETER not in KNOWN_CLI_PARAMS:
+    if SWEEP_PARAMETER not in known:
         raise SystemExit(
             f"SWEEP_PARAMETER '{SWEEP_PARAMETER}' is not a known CLI parameter.\n"
-            "Allowed: " + ", ".join(sorted(KNOWN_CLI_PARAMS))
+            "Allowed: " + ", ".join(sorted(known))
         )
     if not SWEEP_NAME:
         raise SystemExit("SWEEP_NAME must be a non-empty string")
@@ -177,6 +241,7 @@ def write_run_metadata(
         "sweep_name": sweep_name,
         "sweep_parameter": sweep_parameter,
         "sweep_value": sweep_value,
+        "method": "true_2d" if uses_2d_path() else "symmetry_reduced_1d",
         "command": command,
         "command_string": " ".join(shlex.quote(part) for part in command),
         "effective_parameters": params,
@@ -188,7 +253,7 @@ def write_run_metadata(
 
 def prepare_run_params(sweep_value: Any) -> tuple[dict[str, Any], str, Any]:
     """Return (cli_params, directory_name, metadata_sweep_value)."""
-    params = dict(BASE_PARAMS)
+    params = active_base_params()
     if is_source_at_infinity(sweep_value):
         # Parallel-ray model stands in for a source at infinity. source-distance remains
         # the finite launch-plane distance from BASE_PARAMS.
@@ -250,6 +315,7 @@ def run_one(
         "sweep_parameter": SWEEP_PARAMETER,
         "sweep_value": metadata_value,
         "source_at_infinity": is_source_at_infinity(metadata_value),
+        "method": "true_2d" if uses_2d_path() else "symmetry_reduced_1d",
         "output_dir": str(run_dir),
         "exit_code": completed.returncode,
         "command": command_string,
@@ -271,7 +337,7 @@ def main() -> int:
     validate_configuration()
 
     root = repo_root()
-    executable = (root / EXECUTABLE).resolve()
+    executable = (root / active_executable_relpath()).resolve()
     if not executable.is_file():
         raise SystemExit(
             f"Executable not found: {executable}\n"
@@ -280,6 +346,13 @@ def main() -> int:
 
     sweep_dir = (root / OUTPUT_ROOT / SWEEP_NAME).resolve()
     sweep_dir.mkdir(parents=True, exist_ok=True)
+
+    print(
+        f"Sweep '{SWEEP_NAME}' using "
+        f"{'true 2D' if uses_2d_path() else '1D symmetry-reduced'} "
+        f"executable: {executable}",
+        flush=True,
+    )
 
     rows: list[dict[str, Any]] = []
     for value in SWEEP_VALUES:
