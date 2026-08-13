@@ -32,7 +32,7 @@ EXECUTABLE = "build/sgl_canonical_sgl_image"
 BASE_PARAMS = {
     "ray-count": 101,
     "azimuth-count": 360,
-    "resolution": 512,
+    "resolution": 256,
     "extent": 0.8,
     "b-min": 4.0,
     "b-max": 20.0,
@@ -46,19 +46,19 @@ BASE_PARAMS = {
     # Perpendicular distance from the focal line / optical axis (0 = on-axis).
     "observer-distance": 0.0,
     # Finite source-distance samples use point-source rays; "inf" overrides to parallel.
-    "ray-model": "point",
+    "ray-model": "parallel",
 }
 
 # Active sweep — change only these three fields to switch experiments.
 # Use the string "inf" in a source-distance sweep for source-at-infinity (parallel rays).
-SWEEP_NAME = "source_distance"
-SWEEP_PARAMETER = "source-distance"
-SWEEP_VALUES = [20, 50, 100, 200, 500, 1000, "inf"]
+#SWEEP_NAME = "source_distance"
+#SWEEP_PARAMETER = "source-distance"
+#SWEEP_VALUES = [20, 50, 100, 200, 500, 1000, "inf"]
 
 # Alternate example: sweep perpendicular distance from the focal line.
-# SWEEP_NAME = "observer_distance"
-# SWEEP_PARAMETER = "observer-distance"
-# SWEEP_VALUES = [0, 1, 2, 5, 10]
+SWEEP_NAME = "observer_distance"
+SWEEP_PARAMETER = "observer-distance"
+SWEEP_VALUES = [0, 5, 10]
 
 OUTPUT_ROOT = "outputs/sweeps"
 

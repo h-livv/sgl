@@ -46,6 +46,7 @@ target_link_libraries(sgl_geometry PUBLIC Eigen3::Eigen)
 add_library(sgl_rays STATIC
     physics/rays/RayEnsemble.cpp
     physics/rays/RaySampler.cpp
+    physics/rays/RayGrid2DSampler.cpp
     physics/rays/EnsemblePropagator.cpp
 )
 target_include_directories(sgl_rays PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
@@ -58,6 +59,7 @@ add_library(sgl_arrivals STATIC
     physics/arrivals/ArrivalCollector.cpp
     physics/arrivals/AzimuthalExpansion.cpp
     physics/arrivals/ObserverAngularCoordinates.cpp
+    physics/arrivals/ObserverLaunchRefiner.cpp
 )
 target_include_directories(sgl_arrivals PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
 target_link_libraries(sgl_arrivals PUBLIC sgl_rays)
@@ -72,6 +74,9 @@ target_link_libraries(sgl_imaging PUBLIC sgl_arrivals)
 
 add_executable(sgl_canonical_sgl_image experiments/canonical_sgl_image.cpp)
 target_link_libraries(sgl_canonical_sgl_image PRIVATE sgl_imaging)
+
+add_executable(sgl_true_2d_sgl_image experiments/true_2d_sgl_image.cpp)
+target_link_libraries(sgl_true_2d_sgl_image PRIVATE sgl_imaging)
 
 option(SGL_BUILD_TESTS "Build the test suite" ON)
 if(SGL_BUILD_TESTS)
@@ -152,4 +157,15 @@ if(SGL_BUILD_TESTS)
     add_executable(sgl_canonical_image_pipeline tests/canonical_image_pipeline.cpp)
     target_link_libraries(sgl_canonical_image_pipeline PRIVATE sgl_imaging)
     add_test(NAME canonical_image_pipeline COMMAND sgl_canonical_image_pipeline)
+
+    add_executable(sgl_ray_grid_2d_sampler tests/ray_grid_2d_sampler.cpp)
+    target_link_libraries(sgl_ray_grid_2d_sampler PRIVATE sgl_rays)
+    add_test(NAME ray_grid_2d_sampler COMMAND sgl_ray_grid_2d_sampler)
+
+    # Integration-heavy 2D validation binaries are built for manual runs only.
+    add_executable(sgl_true_2d_canonical_validation tests/true_2d_canonical_validation.cpp)
+    target_link_libraries(sgl_true_2d_canonical_validation PRIVATE sgl_imaging)
+
+    add_executable(sgl_true_2d_off_axis_validation tests/true_2d_off_axis_validation.cpp)
+    target_link_libraries(sgl_true_2d_off_axis_validation PRIVATE sgl_imaging)
 endif()

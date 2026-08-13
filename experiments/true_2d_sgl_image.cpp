@@ -1,0 +1,414 @@
+#include <arrivals/ArrivalCollector.h>
+#include <arrivals/ObserverAngularCoordinates.h>
+#include <arrivals/ObserverLaunchRefiner.h>
+#include <geometry/ImagePlane.h>
+#include <geometry/Lens.h>
+#include <geometry/Observer.h>
+#include <geometry/Source.h>
+#include <geometry/WorldFrame.h>
+#include <imaging/Image.h>
+#include <imaging/ImageFormation.h>
+#include <integrators/RK4Integrator.h>
+#include <problem/PropagationProblem.h>
+#include <propagation/TerminationPolicy.h>
+#include <rays/RayGrid2DSampler.h>
+#include <schwarzschild/PropagationContext.h>
+
+#include <algorithm>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <limits>
+#include <numeric>
+#include <sstream>
+#include <string>
+#include <vector>
+
+namespace {
+
+struct CliOptions {
+    std::string output_dir = "outputs/sgl_true_2d";
+    int samples_per_axis = 5;
+    int resolution = 64;
+    double extent = 0.8;
+    double b_max = 20.0;
+    double step_size = 0.01;
+    int max_steps = 300000;
+    double source_distance = 30.0;
+    double observer_axial_distance = 30.0;
+    double observer_distance = 0.0;
+    double observer_hit_tolerance = 1e-6;
+    int max_root_iterations = 12;
+};
+
+void print_usage(std::ostream& out) {
+    out << "Usage: sgl_true_2d_sgl_image [options]\n"
+        << "  --output-dir <dir>                Output directory (default: outputs/sgl_true_2d)\n"
+        << "  --samples-per-axis <int>          2D grid samples per axis (default: 5)\n"
+        << "  --resolution <int>                Square image resolution (default: 64)\n"
+        << "  --extent <double>                 Angular tangent-plane extent (default: 0.8)\n"
+        << "  --b-max <double>                  Launch-plane half-width (default: 20.0)\n"
+        << "  --step-size <double>              Integration step size (default: 0.01)\n"
+        << "  --max-steps <int>                 Maximum integration steps (default: 300000)\n"
+        << "  --source-distance <double>        Source distance from lens along -Z (default: 30.0)\n"
+        << "  --observer-axial-distance <double> Observer distance from lens along +Z (default: 30.0)\n"
+        << "  --observer-distance <double>      Perpendicular observer displacement along +X (default: 0.0)\n"
+        << "  --observer-hit-tolerance <double> Observer-plane residual tolerance after refinement (default: 1e-6)\n"
+        << "  --max-root-iterations <int>       Max Gauss-Newton iterations per seed (default: 12)\n"
+        << "  --help                            Show this help message\n";
+}
+
+bool parse_int(const std::string& value, const std::string& flag, int& out) {
+    try {
+        std::size_t consumed = 0;
+        const int parsed = std::stoi(value, &consumed);
+        if (consumed != value.size()) {
+            std::cerr << "Invalid integer for " << flag << ": " << value << '\n';
+            return false;
+        }
+        out = parsed;
+        return true;
+    } catch (const std::exception&) {
+        std::cerr << "Invalid integer for " << flag << ": " << value << '\n';
+        return false;
+    }
+}
+
+bool parse_double(const std::string& value, const std::string& flag, double& out) {
+    try {
+        std::size_t consumed = 0;
+        const double parsed = std::stod(value, &consumed);
+        if (consumed != value.size()) {
+            std::cerr << "Invalid double for " << flag << ": " << value << '\n';
+            return false;
+        }
+        out = parsed;
+        return true;
+    } catch (const std::exception&) {
+        std::cerr << "Invalid double for " << flag << ": " << value << '\n';
+        return false;
+    }
+}
+
+bool parse_args(int argc, char** argv, CliOptions& options) {
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--help") {
+            print_usage(std::cout);
+            return false;
+        }
+        if (arg == "--output-dir") {
+            if (i + 1 >= argc) {
+                std::cerr << "Missing value for --output-dir\n";
+                return false;
+            }
+            options.output_dir = argv[++i];
+            continue;
+        }
+        if (arg == "--samples-per-axis") {
+            if (i + 1 >= argc || !parse_int(argv[++i], arg, options.samples_per_axis)) {
+                return false;
+            }
+            continue;
+        }
+        if (arg == "--resolution") {
+            if (i + 1 >= argc || !parse_int(argv[++i], arg, options.resolution)) {
+                return false;
+            }
+            continue;
+        }
+        if (arg == "--extent") {
+            if (i + 1 >= argc || !parse_double(argv[++i], arg, options.extent)) {
+                return false;
+            }
+            continue;
+        }
+        if (arg == "--b-max") {
+            if (i + 1 >= argc || !parse_double(argv[++i], arg, options.b_max)) {
+                return false;
+            }
+            continue;
+        }
+        if (arg == "--step-size") {
+            if (i + 1 >= argc || !parse_double(argv[++i], arg, options.step_size)) {
+                return false;
+            }
+            continue;
+        }
+        if (arg == "--max-steps") {
+            if (i + 1 >= argc || !parse_int(argv[++i], arg, options.max_steps)) {
+                return false;
+            }
+            continue;
+        }
+        if (arg == "--source-distance") {
+            if (i + 1 >= argc || !parse_double(argv[++i], arg, options.source_distance)) {
+                return false;
+            }
+            continue;
+        }
+        if (arg == "--observer-axial-distance") {
+            if (i + 1 >= argc ||
+                !parse_double(argv[++i], arg, options.observer_axial_distance)) {
+                return false;
+            }
+            continue;
+        }
+        if (arg == "--observer-distance") {
+            if (i + 1 >= argc || !parse_double(argv[++i], arg, options.observer_distance)) {
+                return false;
+            }
+            continue;
+        }
+        if (arg == "--observer-hit-tolerance") {
+            if (i + 1 >= argc ||
+                !parse_double(argv[++i], arg, options.observer_hit_tolerance)) {
+                return false;
+            }
+            continue;
+        }
+        if (arg == "--max-root-iterations") {
+            if (i + 1 >= argc || !parse_int(argv[++i], arg, options.max_root_iterations)) {
+                return false;
+            }
+            continue;
+        }
+        std::cerr << "Unknown argument: " << arg << '\n';
+        print_usage(std::cerr);
+        return false;
+    }
+    return true;
+}
+
+void write_csv(const std::filesystem::path& path, const Imaging::Image& image) {
+    std::ofstream out(path);
+    if (!out) {
+        throw std::runtime_error("failed to open CSV output: " + path.string());
+    }
+
+    out << "# width," << image.width() << '\n';
+    out << "# height," << image.height() << '\n';
+    out << "# u_min," << image.u_min() << '\n';
+    out << "# u_max," << image.u_max() << '\n';
+    out << "# v_min," << image.v_min() << '\n';
+    out << "# v_max," << image.v_max() << '\n';
+    out << "# normalized,true\n";
+
+    out << std::setprecision(17);
+    for (std::size_t y = 0; y < image.height(); ++y) {
+        for (std::size_t x = 0; x < image.width(); ++x) {
+            if (x > 0) {
+                out << ',';
+            }
+            out << image.at(x, y);
+        }
+        out << '\n';
+    }
+}
+
+void write_pgm(const std::filesystem::path& path, const Imaging::Image& image) {
+    std::ofstream out(path);
+    if (!out) {
+        throw std::runtime_error("failed to open PGM output: " + path.string());
+    }
+
+    out << "P2\n" << image.width() << ' ' << image.height() << "\n65535\n";
+    for (std::size_t y = image.height(); y-- > 0;) {
+        for (std::size_t x = 0; x < image.width(); ++x) {
+            if (x > 0) {
+                out << ' ';
+            }
+            const double value = image.at(x, y);
+            const int scaled =
+                static_cast<int>(std::lround(std::clamp(value, 0.0, 1.0) * 65535.0));
+            out << scaled;
+        }
+        out << '\n';
+    }
+}
+
+void write_summary(const std::filesystem::path& path, const CliOptions& options,
+                   std::size_t rays_sampled, std::size_t raw_arrivals, std::size_t arrived_count,
+                   std::size_t seed_count, std::size_t refined_count, double max_refined_residual,
+                   double median_radius, double radial_stddev, double raw_max,
+                   const std::filesystem::path& csv_path, const std::filesystem::path& pgm_path) {
+    std::ofstream out(path);
+    if (!out) {
+        throw std::runtime_error("failed to open summary output: " + path.string());
+    }
+
+    out << "output_dir=" << options.output_dir << '\n';
+    out << "image_observable=observer_angular_gnomonic\n";
+    out << "sampling_method=true_2d_launch_plane_refined\n";
+    out << "samples_per_axis=" << options.samples_per_axis << '\n';
+    out << "resolution=" << options.resolution << '\n';
+    out << "extent=" << options.extent << '\n';
+    out << "b_max=" << options.b_max << '\n';
+    out << "step_size=" << options.step_size << '\n';
+    out << "max_steps=" << options.max_steps << '\n';
+    out << "source_distance=" << options.source_distance << '\n';
+    out << "observer_axial_distance=" << options.observer_axial_distance << '\n';
+    out << "observer_distance=" << options.observer_distance << '\n';
+    out << "observer_hit_tolerance=" << options.observer_hit_tolerance << '\n';
+    out << "max_root_iterations=" << options.max_root_iterations << '\n';
+    out << "rays_sampled=" << rays_sampled << '\n';
+    out << "raw_arrivals=" << raw_arrivals << '\n';
+    out << "arrived_count=" << arrived_count << '\n';
+    out << "seed_count=" << seed_count << '\n';
+    out << "refined_observer_hits=" << refined_count << '\n';
+    out << "max_refined_residual=" << max_refined_residual << '\n';
+    out << "median_angular_radius=" << median_radius << '\n';
+    out << "radial_stddev=" << radial_stddev << '\n';
+    out << "raw_image_max=" << raw_max << '\n';
+    out << "csv_path=" << csv_path.string() << '\n';
+    out << "pgm_path=" << pgm_path.string() << '\n';
+}
+
+double median_radius(const std::vector<Eigen::Vector2d>& coordinates) {
+    if (coordinates.empty()) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    std::vector<double> radii;
+    radii.reserve(coordinates.size());
+    for (const Eigen::Vector2d& coordinate : coordinates) {
+        radii.push_back(coordinate.norm());
+    }
+    std::sort(radii.begin(), radii.end());
+    const std::size_t mid = radii.size() / 2;
+    if (radii.size() % 2 == 1) {
+        return radii[mid];
+    }
+    return 0.5 * (radii[mid - 1] + radii[mid]);
+}
+
+double radial_stddev(const std::vector<Eigen::Vector2d>& coordinates) {
+    if (coordinates.empty()) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    std::vector<double> radii;
+    radii.reserve(coordinates.size());
+    for (const Eigen::Vector2d& coordinate : coordinates) {
+        radii.push_back(coordinate.norm());
+    }
+    const double mean =
+        std::accumulate(radii.begin(), radii.end(), 0.0) / static_cast<double>(radii.size());
+    double variance = 0.0;
+    for (double radius : radii) {
+        const double delta = radius - mean;
+        variance += delta * delta;
+    }
+    variance /= static_cast<double>(radii.size());
+    return std::sqrt(variance);
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    CliOptions options;
+    if (!parse_args(argc, argv, options)) {
+        return 1;
+    }
+
+    if (options.samples_per_axis < 2 || options.resolution < 1 || options.max_steps < 1 ||
+        options.extent <= 0.0 || options.step_size <= 0.0 || options.b_max <= 0.0 ||
+        options.source_distance <= 0.0 || options.observer_axial_distance <= 0.0 ||
+        options.observer_hit_tolerance <= 0.0 || options.max_root_iterations < 1 ||
+        !std::isfinite(options.observer_distance)) {
+        std::cerr << "Invalid parameter values.\n";
+        return 1;
+    }
+
+    const double half_extent = 0.5 * options.extent;
+    Geometry::Lens lens;
+    lens.parameters = Spacetime::SchwarzschildParameters{.rs = 1.0};
+
+    Geometry::Source source;
+    source.position = -options.source_distance * Geometry::WorldFrame::optical_axis();
+
+    const Eigen::Vector3d observer_position =
+        options.observer_axial_distance * Geometry::WorldFrame::optical_axis() +
+        options.observer_distance * Geometry::WorldFrame::plane_u_axis();
+    const Geometry::Observer observer = Geometry::Observer::looking_at(
+        observer_position, Eigen::Vector3d::Zero(), Geometry::WorldFrame::plane_v_axis());
+    const Geometry::ImagePlane image_plane =
+        Geometry::ImagePlane::attached_to(observer, half_extent, half_extent);
+    const Problem::PropagationProblem problem(lens, source, observer, image_plane);
+
+    Schwarzschild::PropagationOptions propagation_options;
+    propagation_options.horizon_safety_factor = 1.0001;
+    propagation_options.escape_radius = std::numeric_limits<double>::infinity();
+    propagation_options.null_constraint_projection = true;
+    propagation_options.null_projection_interval = 1000;
+    Schwarzschild::PropagationContext context(Spacetime::SchwarzschildParameters{.rs = 1.0},
+                                              propagation_options);
+
+    const Propagation::RadiusBoundTermination fallback(
+        1.0001, std::numeric_limits<double>::infinity());
+    Integration::RK4Integrator integrator;
+    const Propagation::IntegrationSettings settings{.step_size = options.step_size,
+                                                    .max_steps = options.max_steps};
+
+    Rays::RayGrid2DSampler sampler(Rays::RayGrid2DSamplingConfig{
+        .samples_per_axis = options.samples_per_axis,
+        .max_impact_parameter = options.b_max});
+    const Rays::RayEnsemble ensemble = sampler.sample(problem);
+    const std::vector<Arrivals::RayArrival> arrivals = Arrivals::collect_arrivals(
+        ensemble, problem, context.dynamics(), fallback, settings, integrator,
+        context.correction());
+
+    std::size_t arrived_count = 0;
+    for (const Arrivals::RayArrival& arrival : arrivals) {
+        if (arrival.status == Arrivals::ArrivalStatus::Arrived) {
+            ++arrived_count;
+        }
+    }
+
+    const Arrivals::ObserverLaunchRefinementConfig refinement{
+        .hit_tolerance = options.observer_hit_tolerance,
+        .max_iterations = options.max_root_iterations};
+
+    const std::vector<Eigen::Vector2d> seeds = Arrivals::observer_hit_seeds(
+        sampler.samples(), arrivals, problem.image_plane(), options.samples_per_axis);
+    const std::vector<Arrivals::RefinedObserverHit> refined = Arrivals::refine_observer_launches(
+        problem, sampler, arrivals, refinement, context, fallback, settings, integrator);
+
+    std::vector<Eigen::Vector2d> angular_coordinates;
+    angular_coordinates.reserve(refined.size());
+    double max_refined_residual = 0.0;
+    for (const Arrivals::RefinedObserverHit& hit : refined) {
+        angular_coordinates.push_back(hit.angular_coordinate);
+        max_refined_residual = std::max(max_refined_residual, hit.hit.plane_residual.norm());
+    }
+
+    if (angular_coordinates.empty()) {
+        std::cerr << "No launch parameters refined to the observer.\n";
+        return 1;
+    }
+
+    const Imaging::Image image = Imaging::ImageFormation::form_image(
+        angular_coordinates, static_cast<std::size_t>(options.resolution),
+        static_cast<std::size_t>(options.resolution), options.extent);
+    const double raw_max = image.max_intensity();
+    const Imaging::Image normalized = image.normalized_to_max();
+
+    const std::filesystem::path output_dir(options.output_dir);
+    std::filesystem::create_directories(output_dir);
+
+    const std::filesystem::path csv_path = output_dir / "true_2d_image.csv";
+    const std::filesystem::path pgm_path = output_dir / "true_2d_image.pgm";
+    const std::filesystem::path summary_path = output_dir / "run_summary.txt";
+
+    write_csv(csv_path, normalized);
+    write_pgm(pgm_path, normalized);
+    write_summary(summary_path, options, ensemble.size(), arrivals.size(), arrived_count,
+                  seeds.size(), angular_coordinates.size(), max_refined_residual,
+                  median_radius(angular_coordinates), radial_stddev(angular_coordinates), raw_max,
+                  csv_path, pgm_path);
+
+    std::cout << "Wrote " << csv_path << '\n';
+    std::cout << "Wrote " << pgm_path << '\n';
+    std::cout << "Wrote " << summary_path << '\n';
+    return 0;
+}
