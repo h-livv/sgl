@@ -84,3 +84,14 @@ Start with [`docs/HOW_THE_EINSTEIN_RING_IS_FORMED.md`](docs/HOW_THE_EINSTEIN_RIN
 for the ray model, search-vs-ring distinction, and image-formation intuition.
 See [`docs/SGL_FORWARD_PIPELINE.md`](docs/SGL_FORWARD_PIPELINE.md) for the full
 implementation, CLI, OpenMP, and parameter-sweep documentation.
+[`docs/TECHNICAL_BRIEFING.md`](docs/TECHNICAL_BRIEFING.md) is the physics /
+numerics study guide (units, validation, limitations).
+
+Validation scripts (1D observer-hit `theta_E`):
+
+```bash
+python3 scripts/source_distance_test.py
+python3 scripts/ray_convergence_test.py
+python3 scripts/step_convergence_test.py
+python3 scripts/weak_field_validation.py
+```

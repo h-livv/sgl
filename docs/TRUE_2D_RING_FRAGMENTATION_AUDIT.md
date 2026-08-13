@@ -1,7 +1,16 @@
 # True 2D Ring Fragmentation Audit
 
-**Investigation only.** No implementation changes. All timings and counts below
-come from reduced on-axis runs (`samples-per-axis` ∈ {3,5,7,9,11}),
+> **Current tree.** On-axis `sgl_true_2d_sgl_image` now calls
+> `fill_aligned_observer_ring` after Newton (`true_2d_sgl_image.cpp`). The
+> on-axis **PGM/CSV image** is a symmetry fill of median \(\rho\), not a plot of
+> the sparse Newton hits. Off-axis still images the refined hits with no fill.
+>
+> The tables below count **Newton-refined observer hits before that fill**. They
+> remain the right description of search/seed/Newton survival. They are **not**
+> a description of the on-axis image the executable writes today.
+
+**Investigation of Newton/seed fragmentation.** Counts below come from reduced
+on-axis runs (`samples-per-axis` ∈ {3,5,7,9,11}),
 `source-distance=30`, `observer-axial-distance=30`, `observer-distance=0`,
 `b-max=20`, `rs=1`, `step-size=0.01`, `max-steps=300000`,
 `observer-hit-tolerance=1e-6`, `max-root-iterations=12`, `OMP_NUM_THREADS=8`.
@@ -38,17 +47,23 @@ refine_observer_launches
 for each unique RefinedObserverHit:
     angular_coordinates.push_back(hit.angular_coordinate)
         ↓
-form_image(angular_coordinates, resolution, resolution, extent)
+fill_aligned_observer_ring(angular_coordinates, observer_distance, azimuth_count)
+    on-axis: median ρ + expand_angular_azimuthally
+    off-axis: return refined list unchanged
+        ↓
+form_image(image_samples, resolution, resolution, extent)
         ↓
 CSV / PGM  (true_2d_image.*)
 ```
 
-### What is plotted
+### What is plotted (current executable)
 
-**Only unique refined observer hits.** `true_2d_sgl_image.cpp` copies
-`hit.angular_coordinate` from each `RefinedObserverHit` and passes that vector
-to `form_image`. Search arrivals are not passed in. Seeds are not passed in.
-`expand_angular_azimuthally` is **not** called.
+**On-axis:** `fill_aligned_observer_ring` of the refined gnomonic radii (median
+\(\rho\), then `azimuth_count` copies). Search arrivals and seeds are not
+imaged.
+
+**Off-axis / this audit’s tables:** unique refined observer hits only. The
+counts in §1 “Survival” are Newton hits **before** the on-axis fill.
 
 The plotted quantity is observer-centered gnomonic
 
@@ -68,16 +83,19 @@ from `observer_angular_coordinates` of each refined arrival’s incoming
 | Seeds | 2 | 14 | 16 | 16 | 24 |
 | Newton successes | 0 | 8 | 14 | 16 | 22 |
 | Newton failures | 2 | 6 | 2 | 0 | 2 |
-| **Unique refined hits = image samples** | **0** | **2** | **6** | **12** | **10** |
+| **Unique refined hits (before on-axis fill)** | **0** | **2** | **6** | **12** | **10** |
 | Nonzero pixels at resolution 8 | 0 | 2 | 6 | 12 | 10 |
 | Nonzero pixels at resolution 64 | 0 | 2 | 6 | 12 | 10 |
 
 One search ray always fails to arrive: `(b_u, b_v) = (0, 0)` (on-axis into the
 lens).
 
-**Image resolution does not create the gaps.** Nonzero pixel count equals the
-unique refined-hit count at both 8×8 and 64×64. The fragmentation is already
-present in the list of observer samples.
+**These pixel counts were from a diagnostic that binned Newton hits directly
+(no `fill_aligned_observer_ring`).** Image resolution did not create the gaps:
+nonzero pixel count equalled the unique refined-hit count at both 8×8 and
+64×64. The fragmentation is already present in the list of Newton samples.
+The current on-axis executable fills that list into a circle before writing
+the PGM.
 
 ---
 
@@ -413,11 +431,16 @@ Three stacked mechanisms punch holes in that discrete set:
 
 ---
 
-## 11. Recommended minimal fixes (not implemented)
+## 11. Recommended minimal fixes
 
-None of these were applied.
+### Fix 1 — On-axis: do not use isolated 2D roots — **implemented**
 
-### Fix 1 — On-axis: do not use isolated 2D roots
+The current on-axis executable calls `fill_aligned_observer_ring`: median
+refined \(\rho\), then `expand_angular_azimuthally`. Off-axis still must not
+use this (and does not).
+
+The remaining items below were **not** implemented. They still describe Newton
+fragmentation of the refined-hit *list*, which off-axis imaging still sees.
 
 When `observer-distance == 0`, recover one equatorial observer-hit (existing 1D
 bisection or a 1D radial root at `b_v = 0`) and call

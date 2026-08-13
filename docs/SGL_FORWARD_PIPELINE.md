@@ -9,6 +9,9 @@ without relying on prior project history.
 
 Conceptual questions (search geodesics vs ring rays, 1D vs 2D) are answered in
 [HOW_THE_EINSTEIN_RING_IS_FORMED.md](HOW_THE_EINSTEIN_RING_IS_FORMED.md).
+Physics, units, validation, and limitations:
+[TECHNICAL_BRIEFING.md](TECHNICAL_BRIEFING.md). Source-distance experiment:
+[SOURCE_DISTANCE.md](SOURCE_DISTANCE.md).
 
 ---
 
@@ -25,7 +28,7 @@ and in how a 2D sky image is filled.
 | Path | Executable | Sampling | Ring fill | Off-axis |
 |---|---|---|---|---|
 | 1D symmetry-reduced | `sgl_canonical_sgl_image` | 1D `b` sweep, one equatorial plane | `expand_angular_azimuthally` | Rejected |
-| True 2D | `sgl_true_2d_sgl_image` | Cartesian `(b_u, b_v)` launch-plane grid | Refined observer hits only | Supported |
+| True 2D | `sgl_true_2d_sgl_image` | Cartesian `(b_u, b_v)` launch-plane grid | On-axis: `fill_aligned_observer_ring`; off-axis: refined hits only | Supported |
 
 The 2D **search grid is not the image**. Those geodesics survey launch-parameter space.
 Newton then moves promising `(b_u, b_v)` until the geodesic hits the observer. Only those
@@ -73,8 +76,10 @@ Seeds
       ↓  Arrivals::observer_hit_seeds  (global best, local minima, edge interpolations)
 Newton (independent seeds, OpenMP; inner 1-ray propagate stays serial)
       ↓  Arrivals::refine_observer_launches → refine_launch_to_observer
-Refined observer hits  ← ONLY these are imaged
-      ↓  Arrivals::observer_angular_coordinates  (no azimuthal expansion)
+Refined observer hits
+      ↓  Arrivals::observer_angular_coordinates
+On-axis fill (skipped if observer-distance ≠ 0)
+      ↓  Arrivals::fill_aligned_observer_ring  (median ρ + expand_angular_azimuthally)
 Image formation
       ↓  Imaging::ImageFormation::form_image
       ↓  write_csv / write_pgm          (experiments/true_2d_sgl_image.cpp)
@@ -170,7 +175,8 @@ Typical default-run summary fields: `image_observable=observer_angular_gnomonic`
 | `run_summary.txt` | Settings plus search/seed/refined counts |
 
 Read `rays_sampled` (search grid), `arrived_count` (plane crossings), `seed_count`,
-and `refined_observer_hits` (the image samples) as distinct. See
+and `refined_observer_hits` (Newton successes that set \(\rho\)) as distinct.
+On-axis the PGM is then filled by `fill_aligned_observer_ring`. See
 [HOW_THE_EINSTEIN_RING_IS_FORMED.md](HOW_THE_EINSTEIN_RING_IS_FORMED.md) section 4.
 
 ## View the image
@@ -224,8 +230,9 @@ and `Rays::RaySamplingConfig`.
 ## 2D CLI parameters
 
 Defined in `experiments/true_2d_sgl_image.cpp` (`CliOptions`). There is **no**
-`--ray-model`, `--ray-count`, `--azimuth-count`, or `--b-min`. Incident rays are always
-parallel. Thread count is not a flag.
+`--ray-model`, `--ray-count`, or `--b-min`. Incident rays are always
+parallel. `--azimuth-count` is used only for the on-axis ring fill. Thread
+count is not a flag.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -241,6 +248,7 @@ parallel. Thread count is not a flag.
 | `--observer-distance` | `0.0` | Perpendicular offset along +X (off-axis allowed) |
 | `--observer-hit-tolerance` | `1e-6` | Newton stop on `‖plane_residual‖` |
 | `--max-root-iterations` | `12` | Max Gauss–Newton iterations per seed |
+| `--azimuth-count` | `720` | On-axis ring fill count (`fill_aligned_observer_ring`; unused off-axis) |
 
 Fixed physics matches the 1D executable (`rs = 1`, null projection every 1000 steps,
 unbounded plane for crossing).
@@ -352,8 +360,10 @@ Order of construction:
 3. `RayGrid2DSampler::sample` → `N²` search geodesics.
 4. `collect_arrivals` on the search ensemble.
 5. `observer_hit_seeds` then `refine_observer_launches` (OpenMP over seeds).
-6. `observer_angular_coordinates` per refined hit — **no** azimuthal expansion.
-7. `form_image` → `true_2d_image.csv` / `.pgm`.
+6. `observer_angular_coordinates` per refined hit.
+7. `fill_aligned_observer_ring` when `observer-distance == 0` (median \(\rho\) +
+   azimuthal copy). Off-axis: refined list unchanged.
+8. `form_image` → `true_2d_image.csv` / `.pgm`.
 
 If Newton produces zero refined hits, the executable exits with an error
 (`No launch parameters refined to the observer.`). A 3×3 search grid often fails
@@ -994,11 +1004,13 @@ This is the 2D counterpart of the 1D `b` scan + bisection. Files:
 | Search grid | `N×N` parallel rays at cell centers | Survey `‖r(b_u, b_v)‖` on the observer plane |
 | Seeds | No extra integration | Starting guesses from the residual field |
 | Newton trials | One geodesic per `evaluate_launch` | Move `(b_u, b_v)` toward `‖r‖ = 0` |
-| Refined hits | The successful Newton geodesic | **Only these** go to `form_image` |
+| Refined hits | The successful Newton geodesic | Determine \(\rho\). On-axis image is then `fill_aligned_observer_ring`; off-axis these hits are binned directly |
 
 `r = image_plane.to_plane_coordinates(world_hit)`. Crossing the unbounded observer
-**plane** (`ArrivalStatus::Arrived`) is not an observer hit. The image is the set of
-launches with `‖r‖ ≤ hit_tolerance` (default `1e-6`).
+**plane** (`ArrivalStatus::Arrived`) is not an observer hit. A refined hit has
+`‖r‖ ≤ hit_tolerance` (default `1e-6`). Those hits set \(\rho\). On-axis the
+imaged samples are then the azimuthal fill of median \(\rho\); off-axis the
+refined hits themselves are binned.
 
 Search rays are never an aperture: a near-miss is a different photon path and is not
 binned.
@@ -1036,8 +1048,9 @@ cell. Compact/sort/dedup are not parallelized.
 ## Summary fields (2D `run_summary.txt`)
 
 `rays_sampled` = `N²` search geodesics. `arrived_count` = plane crossings.
-`seed_count` = Newton guesses. `refined_observer_hits` = image samples.
-`median_angular_radius` / `radial_stddev` are computed from refined gnomonic radii.
+`seed_count` = Newton guesses. `refined_observer_hits` = Newton successes.
+`median_angular_radius` / `radial_stddev` are computed from refined gnomonic radii
+(before the on-axis azimuthal fill). The on-axis PGM/CSV image is the filled circle.
 
 ---
 
@@ -1198,8 +1211,9 @@ The 1D scan geodesics are **not** binned. Only the refined observer-hit directio
 copied around the axis, is imaged.
 
 **2D** counterpart: `N×N` `RayGrid2DSampler` search geodesics → residual field →
-seeds → Newton → `refined_observer_hits` angular coordinates → `form_image` with
-**no** azimuthal expansion. Search geodesics are not binned.
+seeds → Newton → refined angular coordinates → on-axis
+`fill_aligned_observer_ring`, off-axis no fill → `form_image`. Search geodesics
+are not binned.
 
 ---
 
@@ -1217,7 +1231,7 @@ seeds → Newton → `refined_observer_hits` angular coordinates → `form_image
 | `propagate_ensemble` | `physics/rays/EnsemblePropagator.*` | Indexed OpenMP per-ray propagate | ensemble | `RayOutcomes` (`outcomes[i]` ↔ ray `i`) |
 | `build_null_scatter` / `build_custom` | `physics/schwarzschild/InitialStates.cpp` | Null `State` | IC + `rs` | `State` |
 | `collect_arrivals` | `physics/arrivals/ArrivalCollector.*` | Cross + localize | ensemble + problem | `RayArrival[]` |
-| `observer_angular_coordinates` / `expand_angular_azimuthally` | `physics/arrivals/ObserverAngularCoordinates.*` | Gnomonic angles; 1D ring fill | `RayArrival` | `Vector2d` samples |
+| `observer_angular_coordinates` / `expand_angular_azimuthally` / `fill_aligned_observer_ring` | `physics/arrivals/ObserverAngularCoordinates.*` | Gnomonic angles; 1D ring fill; 2D on-axis fill | `RayArrival` / refined angles | `Vector2d` samples |
 | `expand_azimuthally` / `PlaneArrival` | `physics/arrivals/AzimuthalExpansion.*` | Plane-coordinate symmetry expand (not used by current image mains) | `RayArrival[]` | `PlaneArrival[]` |
 | `observer_hit_seeds` / `refine_observer_launches` | `physics/arrivals/ObserverLaunchRefiner.*` | 2D search residuals → Newton hits | grid + arrivals | `RefinedObserverHit[]` |
 | `ImageFormation` | `physics/imaging/ImageFormation.*` | Bin `Vector2d` or `PlaneArrival` | samples | `Image` |
@@ -1236,6 +1250,7 @@ Numerical kernel rows (`SchwarzschildMetric`, `GeodesicDynamics`, `RK4Integrator
 - Schwarzschild launch ICs (`build_null_scatter`, `build_custom`)
 - `RayArrival`, observer-hit refinement, gnomonic angular coordinates
 - 1D azimuthal angular expansion (symmetry fill, not extra geodesics)
+- 2D on-axis `fill_aligned_observer_ring` (same fill from median Newton \(\rho\))
 - `Image` as a scientific intensity product
 
 ### Numerical
@@ -1251,7 +1266,7 @@ Numerical kernel rows (`SchwarzschildMetric`, `GeodesicDynamics`, `RK4Integrator
 
 - `CoordinateChart` cart↔sphere
 - `ChartMapping` chart→world
-- `expand_angular_azimuthally` (1D sky-circle fill)
+- `expand_angular_azimuthally` / `fill_aligned_observer_ring` (sky-circle fill)
 - `ImageFormation::pixel_for` / `accumulate` / `form_image`
 - `Image::normalized_to_max`
 
@@ -1284,9 +1299,9 @@ These are facts of the current implementation, not recommendations.
 | Assumption / limit | What it means scientifically |
 |---|---|
 | Schwarzschild-only lens | Gravity is exactly static, spherically symmetric vacuum; no spin, no multipoles, no plasma. |
-| Two image paths | 1D rotates one equatorial observer-hit. 2D samples launch-plane azimuths with real geodesics. |
+| Two image paths | 1D rotates one equatorial observer-hit. 2D searches a launch-plane grid; on-axis then fills from median \(\rho\); off-axis bins sparse Newton hits. |
 | 1D spherical-symmetry fill | 1D ring smoothness is `azimuth_count`, not independent geodesics. Off-axis 1D is rejected. |
-| 2D search ≠ image | `N×N` search geodesics survey residuals; only refined observer hits are binned. Coarse `N` yields few ring samples. |
+| 2D search ≠ image | `N×N` search geodesics survey residuals; only refined observer hits determine \(\rho\). On-axis the PGM is a symmetry fill; coarse \(N\) still yields few Newton hits. |
 | 2D parallel incidence | All 2D rays share source→lens direction. `--source-distance` is launch-plane `z`, not a point-source fan, and not true `S=∞`. |
 | Geometric optics | Light is treated as rays; no wave optics, interference, diffraction, or PSF. |
 | Unit intensity weights | Each angular sample contributes `1`; not a calibrated flux or magnification map. |
@@ -1307,12 +1322,12 @@ Definitions match the **implemented** types/functions.
 | **Search geodesic** | A 2D grid launch used to map observer-plane miss distance. Not an image sample. |
 | **Plane residual** | `image_plane.to_plane_coordinates(world_hit)`; `‖r‖=0` is an observer hit. |
 | **Seed** | A `(b_u, b_v)` Newton starting guess from the search residual field. |
-| **Refined observer hit** | A launch Newton moved until `‖r‖ ≤ hit_tolerance`; these are the 2D image samples. |
+| **Refined observer hit** | A launch Newton moved until `‖r‖ ≤ hit_tolerance`. Sets 2D \(\rho\); off-axis these are the image samples. |
+| **Azimuthal angular expansion** | `expand_angular_azimuthally`: rotate one signed `u_ang` into a circle (1D path, and 2D on-axis via `fill_aligned_observer_ring`). |
 | **RaySampler** | 1D linear `b` sweep via `build_null_scatter`. |
 | **RayGrid2DSampler** | 2D cell-centered parallel launch-plane grid via `build_custom`. |
 | **RayArrival** | Per-ray observer-**plane** result (crossing, not necessarily observer hit). |
 | **Gnomonic angular coordinates** | `(u_ang, v_ang) = (tan θ_right, tan θ_up)` from incoming direction. |
-| **Azimuthal angular expansion** | `expand_angular_azimuthally`: rotate one signed `u_ang` into a circle (1D path). |
 | **PlaneArrival** | Optional plane-coordinate sample; current executables image `Vector2d` angles instead. |
 | **ImageFormation** | Half-open pixel binning of `Vector2d` or `PlaneArrival` with unit accumulation. |
 
@@ -1323,14 +1338,16 @@ Definitions match the **implemented** types/functions.
 Start here, in order:
 
 1. `docs/HOW_THE_EINSTEIN_RING_IS_FORMED.md` — conceptual 1D vs 2D, search vs ring
-2. `experiments/canonical_sgl_image.cpp` — 1D wiring
-3. `experiments/true_2d_sgl_image.cpp` — 2D wiring
-4. `physics/rays/RaySampler.cpp` / `RayGrid2DSampler.cpp` — ensembles
-5. `physics/schwarzschild/InitialStates.cpp` — null initial data
-6. `physics/arrivals/ArrivalCollector.cpp` — propagate + localize
-7. `physics/rays/EnsemblePropagator.cpp` — OpenMP ensemble loop
-8. `physics/arrivals/ObserverLaunchRefiner.cpp` — 2D seeds + Newton
-9. `physics/arrivals/ObserverAngularCoordinates.cpp` — gnomonic angles + 1D ring fill
-10. `physics/imaging/ImageFormation.cpp` — pixels
-11. `tests/canonical_image_pipeline.cpp` / `ensemble_parallel_invariance.cpp`
-12. `experiments/parameter_sweep.py` — sweeps and `--threads`
+2. `docs/TECHNICAL_BRIEFING.md` — physics, numerics, validation, limitations
+3. `docs/SOURCE_DISTANCE.md` — \(\theta_E(S)\) experiment
+4. `experiments/canonical_sgl_image.cpp` — 1D wiring
+5. `experiments/true_2d_sgl_image.cpp` — 2D wiring
+6. `physics/rays/RaySampler.cpp` / `RayGrid2DSampler.cpp` — ensembles
+7. `physics/schwarzschild/InitialStates.cpp` — null initial data
+8. `physics/arrivals/ArrivalCollector.cpp` — propagate + localize
+9. `physics/rays/EnsemblePropagator.cpp` — OpenMP ensemble loop
+10. `physics/arrivals/ObserverLaunchRefiner.cpp` — 2D seeds + Newton
+11. `physics/arrivals/ObserverAngularCoordinates.cpp` — gnomonic angles + ring fill
+12. `physics/imaging/ImageFormation.cpp` — pixels
+13. `tests/canonical_image_pipeline.cpp` / `ensemble_parallel_invariance.cpp`
+14. `experiments/parameter_sweep.py` — sweeps and `--threads`

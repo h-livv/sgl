@@ -4,6 +4,7 @@ A plain-language guide to the ray models and image formation used by this
 project’s Schwarzschild SGL forward pipelines.
 
 For file-level call traces and APIs, see [SGL_FORWARD_PIPELINE.md](SGL_FORWARD_PIPELINE.md).
+Physics, units, validation: [TECHNICAL_BRIEFING.md](TECHNICAL_BRIEFING.md).
 This document answers the conceptual questions first.
 
 The repository has **two image paths**. They share the same Schwarzschild/RK4
@@ -13,7 +14,7 @@ parameters and how they turn arrivals into a 2D ring.
 | Path | Executable | Launch sampling | How the ring is filled |
 |---|---|---|---|
 | **1D symmetry-reduced** | `sgl_canonical_sgl_image` | 1D sweep in impact parameter `b`, one orbital plane | Rotate one observer-hit direction about the optical axis |
-| **True 2D** | `sgl_true_2d_sgl_image` | Cartesian `(b_u, b_v)` launch-plane grid | Independent geodesics that actually hit the observer; **no** azimuthal copy |
+| **True 2D** | `sgl_true_2d_sgl_image` | Cartesian `(b_u, b_v)` launch-plane grid | On-axis: median refined \(\rho\) + azimuthal copy (`fill_aligned_observer_ring`). Off-axis: independent refined hits only; **no** azimuthal copy |
 
 Off-axis geometry (`--observer-distance ≠ 0`) is valid only on the 2D path. The
 1D executable rejects it, because azimuthal expansion assumes on-axis spherical
@@ -28,8 +29,8 @@ symmetry.
 | Are the rays parallel? | **Optional.** Default `--ray-model point` is a fan from one point. `--ray-model parallel` is a collimated beam. | **Always a parallel beam.** There is no `--ray-model`. Every search and refined ray starts on the launch plane `z = −S` and aims along source→lens (`+Z` when aligned). |
 | Uniform random rays? | **No.** Deterministic `b` grid. | **No.** Deterministic cell-centered `(b_u, b_v)` grid. |
 | What is sampled? | A **1D linear sweep in `b`**, in one equatorial plane. | A **2D launch-plane grid**. Those samples are **search geodesics**, not the ring. |
-| What appears in the image? | The **observer-hit** ray’s incoming direction, copied around the axis. | Only **refined** launches that pass through the observer point. Search rays are never binned. |
-| How does a 2D ring appear? | After finding one equatorial observer-hit, rotate that angle by symmetry. | By actually integrating geodesics at many azimuths in launch-parameter space, then keeping those that hit the observer. |
+| What appears in the image? | The **observer-hit** ray’s incoming direction, copied around the axis. | Search rays are never binned. On-axis: median refined \(\rho\), then azimuthal copy. Off-axis: only the Newton-refined hits. |
+| How does a 2D ring appear? | After finding one equatorial observer-hit, rotate that angle by symmetry. | Search + Newton find observer-hitting launches. On-axis the picture is then filled by symmetry; off-axis the sparse hits are imaged as-is. |
 | What coordinate is imaged? | Observer-centered gnomonic `(u_ang, v_ang) = (tan θ_right, tan θ_up)`. | Same observable. |
 | How is the image made? | Each 2D angular sample adds **+1** to one pixel; then **normalize by max**. | Same. |
 
@@ -199,9 +200,10 @@ They are **not** an imaging aperture and **not** the Einstein ring.
   cheap; it does not mean the photon hit the spacecraft.
 - Search rays are **never** passed to `form_image`.
 
-A 5×5 run is 25 search geodesics. An 11×11 run is 121. A 71×71 run is 5041.
-Runtime is dominated by this grid (plus later Newton), but the image still
-contains only a handful of observer-hitting samples.
+A 5×5 run is 25 search geodesics. An 11×11 run is 121. Runtime is dominated by
+this grid (plus later Newton). Newton typically returns only a handful of
+observer-hitting samples; on-axis the PGM is then filled to `azimuth_count`
+points, while off-axis those few hits are the image.
 
 ### Plane residual
 
@@ -260,9 +262,10 @@ Seeds (local near-misses)
     │
     │  Gauss–Newton on (b_u, b_v), still real geodesics
     ▼
-Refined observer hits  ← ONLY these enter the image
+Refined observer hits  ← these set ρ
     │
     │  incoming direction → (u_ang, v_ang)
+    │  on-axis: fill_aligned_observer_ring
     ▼
 form_image
 ```
@@ -273,8 +276,9 @@ A search ray that misses the observer by milliradians is a **different photon
 path**. Binning it would paint a thick fuzzy annulus of “near the spacecraft”
 instead of the geometric-optics image of rays that reach the observer. The
 finite-aperture idea (keep search rays within some hit radius) was tried and
-replaced by this refinement. The image is the set of observer-hitting launch
-parameters, not a blurred snapshot of the search grid.
+replaced by this refinement. Off-axis, the image is those observer-hitting
+launches. On-axis, their median \(\rho\) is then copied around the axis. Neither
+case is a blurred snapshot of the search grid.
 
 ### What the summary counts mean
 
@@ -283,7 +287,7 @@ parameters, not a blurred snapshot of the search grid.
 | `rays_sampled` | Search-grid geodesics (`N²`) | No |
 | `arrived_count` | Search rays that crossed the observer **plane** | No |
 | `seed_count` | Newton starting guesses | No |
-| `refined_observer_hits` | Launches tuned to the observer **point** | **Yes** |
+| `refined_observer_hits` | Launches tuned to the observer **point** | Determine \(\rho\); on-axis PGM is then a symmetry fill |
 
 The 1D analogue of search-vs-ring is the `b` scan vs the **one** bisection root
 that is then rotated. The 1D scan also does not paint the ring; only the
@@ -341,17 +345,23 @@ This is a **symmetry reconstruction** on the observer sky, not a claim that 720
 independent geodesics were flown at every azimuth. That is why 1D cannot do
 off-axis observers: the ring would not stay a rotated copy of one equatorial hit.
 
-### 2D: many real hits, no rotation
+### 2D: refined hits, then on-axis fill
 
-Each refined observer hit already has its own `(u_ang, v_ang)` from a geodesic
-that was launched at a distinct `(b_u, b_v)`. The code does **not** call
-`expand_angular_azimuthally`. On-axis, those hits should lie on a circle; the
-number of distinct azimuths is limited by how many unique refined launches
-Newton found, which in turn is limited by search-grid density.
+Each refined observer hit has its own `(u_ang, v_ang)` from a geodesic launched
+at a distinct `(b_u, b_v)`. Search geodesics are never binned.
 
-That is why a 5×5 2D image can show only two spots, while 1D with
-`azimuth_count = 720` looks like a continuous ring: 1D **drew** the circle;
-2D **sampled** it.
+**On-axis** (`observer-distance == 0`): `fill_aligned_observer_ring` replaces
+those hits with the median \(\rho\) and calls `expand_angular_azimuthally`
+(`azimuth_count`, default 720). The on-axis 2D *picture* is therefore a
+symmetry fill, like 1D. The Newton hits still determine \(\rho\).
+
+**Off-axis**: that fill is skipped. The image is the sparse set of real
+refined hits. A 5×5 off-axis run can show only two spots: two images of a
+point source as seen by a point observer.
+
+That is why an on-axis 2D image can look like a continuous ring even at
+`samples-per-axis = 5`, while off-axis cannot: on-axis **drew** the circle
+after Newton; off-axis **sampled** isolated roots.
 
 ---
 
@@ -446,16 +456,17 @@ Seeds (local minima / edge interpolations)
     │
     │  Gauss–Newton until ‖residual‖ ≤ 1e-6
     ▼
-Refined observer-hitting geodesics                ← the actual ring samples
+Refined observer-hitting geodesics
     │
     │  each incoming direction → (u_ang, v_ang)
-    │  NO azimuthal expansion
+    │  on-axis: fill_aligned_observer_ring (median ρ + azimuthal copy)
+    │  off-axis: no azimuthal expansion
     ▼
-Discrete points on the ring (as many unique hits as Newton found)
+Circle (on-axis) or sparse sky samples (off-axis)
     │
     │  bin: intensity += 1; divide by max
     ▼
-Einstein-ring image (sparse until the search grid is dense)
+Einstein-ring image
 ```
 
 ---
@@ -463,9 +474,10 @@ Einstein-ring image (sparse until the search grid is dense)
 ## 8. Mental model checklist
 
 1. **Two paths:** 1D integrates one plane and rotates; 2D integrates a launch-plane
-   grid and keeps only observer hits.
-2. **2D search geodesics are not the ring.** They survey `(b_u, b_v)`. The image
-   is the refined set that actually hits the observer.
+   grid, keeps observer hits, then on-axis only fills a circle from median \(\rho\).
+2. **2D search geodesics are not the ring.** They survey `(b_u, b_v)`. Newton
+   finds observer hits. On-axis the image is then a symmetry fill of median \(\rho\);
+   off-axis the refined hits are binned as-is.
 3. **Plane crossing ≠ observer hit.** `arrived_count` is the former;
    `refined_observer_hits` is the latter.
 4. **1D default source is a point fan;** 1D `--ray-model parallel` and **all 2D
@@ -502,7 +514,7 @@ Einstein-ring image (sparse until the search grid is dense)
 | Integration + plane hit | `physics/arrivals/ArrivalCollector.cpp`, `physics/rays/EnsemblePropagator.cpp` | Same kernel |
 | Observer-hit solve | bisection on `residual_u(b)` in the 1D executable | `physics/arrivals/ObserverLaunchRefiner.cpp` |
 | Angular coordinates | `physics/arrivals/ObserverAngularCoordinates.cpp` | Same |
-| Ring fill | `expand_angular_azimuthally` | None — refined hits only |
+| Ring fill | `expand_angular_azimuthally` | On-axis: `fill_aligned_observer_ring`; off-axis: refined hits only |
 | Pixel binning | `physics/imaging/ImageFormation.cpp` | Same |
 | Runnable experiment | `experiments/canonical_sgl_image.cpp` | `experiments/true_2d_sgl_image.cpp` |
 | Sweep orchestrator | `experiments/parameter_sweep.py` (auto-selects 2D when sweeping `observer-distance`) | Same |
