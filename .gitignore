@@ -2,5 +2,6 @@ build/
 outputs/
 .venv/
 .DS_Store
+.cursor/
 CMakeUserPresets.json
 graphify-out/
