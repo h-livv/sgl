@@ -8,6 +8,14 @@
 #include <limits>
 #include <vector>
 
+// Experiment-level: 1D observer-hit → gnomonic ρ → azimuthal angular ring → image.
+// Contract: exactly one primary hit (smallest positive ρ); residual_u within
+//           1e-6; formed image is a hollow ring in all four quadrants with
+//           r_max/r_min < 1.25.
+// Pipeline: kernel + geometry + rays + arrivals + imaging (canonical 1D path).
+// Caveat: expand_angular_azimuthally, not the spatial plane-u expander.
+//         S = 100, D = 30, Point-source rays (not the S = D = 30 canonical toy).
+
 namespace {
 
 bool has_nonzero_in_quadrant(const Imaging::Image& image, bool positive_u, bool positive_v) {
@@ -60,6 +68,7 @@ int main() {
     constexpr int ray_count = 41;
     constexpr int azimuth_count = 96;
     constexpr std::size_t resolution = 128;
+    // b in [2, 20] brackets the photon sphere (b_crit ≈ 2.598) and typical Einstein-ring roots.
     constexpr double b_min = 2.0;
     constexpr double b_max = 20.0;
     constexpr double step_size = 0.01;
@@ -73,6 +82,7 @@ int main() {
 
     Schwarzschild::PropagationOptions options;
     options.horizon_safety_factor = 1.0001;
+    // Unbounded Schwarzschild r: plane-crossing, not an r-escape cut, ends the geodesic.
     options.escape_radius = std::numeric_limits<double>::infinity();
     options.null_constraint_projection = true;
     options.null_projection_interval = 1000;
@@ -120,6 +130,7 @@ int main() {
               std::isfinite(selection.angular_coordinate.y()),
           "angular coordinate finite");
 
+    // Copy signed gnomonic u_ang around the optical axis — not spatial plane-u.
     const std::vector<Eigen::Vector2d> angular_samples =
         Arrivals::expand_angular_azimuthally(selection.angular_coordinate.x(), azimuth_count);
     CHECK(angular_samples.size() > 0, "angular samples produced");
@@ -133,6 +144,7 @@ int main() {
 
     const std::size_t center_x = image.width() / 2;
     const std::size_t center_y = image.height() / 2;
+    // A copied ring, not a filled disk: the optical-axis pixel must stay empty.
     CHECK_CLOSE(image.at(center_x, center_y), 0.0, 1e-15, "center pixel intensity zero");
 
     CHECK(has_nonzero_in_quadrant(image, true, true), "nonzero in quadrant ++");
@@ -142,6 +154,7 @@ int main() {
 
     const double r_min = min_nonzero_radius(image);
     const double r_max = max_nonzero_radius(image);
+    // Thin copied circle in pixel bins, not a thick annulus from many distinct b's.
     CHECK(r_min > 0.0, "localized ring has positive inner radius");
     CHECK(r_max / r_min < 1.25, "localized ring thickness bounded");
 

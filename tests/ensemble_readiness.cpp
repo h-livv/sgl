@@ -8,6 +8,13 @@
 #include <array>
 #include <vector>
 
+// Kernel: PropagationOutcome as a per-ray value type for later ensembles.
+// Contract: b < b_crit captures (horizon), b > b_crit escapes; a second run and
+//           a fresh PropagationContext are bitwise identical (no hidden state).
+// Pipeline: kernel, immediately before EnsemblePropagator. Still serial
+//           propagate() calls, not the ensemble wrapper.
+// Caveat: equality is bit-exact, not a relative tolerance.
+
 namespace {
 
 bool equal_state_bits(const State& a, const State& b) {
@@ -30,6 +37,7 @@ std::vector<Propagation::PropagationOutcome> run_ensemble(const Spacetime::Schwa
     Schwarzschild::PropagationContext context(params, options);
 
     const double b_crit = Physics::Observables::critical_impact_parameter(params.rs);
+    // Sign of (b - b_crit) splits capture from escape; ±0.1 is a near-critical pair.
     const std::array<double, 5> offsets{-0.5, -0.1, 0.1, 0.5, 2.0};
 
     Integration::RK4Integrator integrator;

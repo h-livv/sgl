@@ -38,12 +38,14 @@ double RaySampler::impact_parameter_at(int index) const {
     if (config_.ray_count == 1) {
         return config_.min_impact_parameter;
     }
+    // Inclusive endpoints: i = 0 → min, i = ray_count−1 → max.
     const double t = static_cast<double>(index) / static_cast<double>(config_.ray_count - 1);
     return config_.min_impact_parameter +
            t * (config_.max_impact_parameter - config_.min_impact_parameter);
 }
 
 RayEnsemble RaySampler::sample(const Problem::PropagationProblem& problem) const {
+    // One source event in the chart; the fan is encoded entirely in b (conserved L/E).
     const Eigen::Vector3d source_chart =
         Geometry::to_chart_frame(problem.lens(), problem.source().position);
     const State chart_state(

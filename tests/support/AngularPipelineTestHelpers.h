@@ -1,5 +1,10 @@
 #pragma once
 
+// Test-side copy of the 1D observer-hit kernel in experiments/canonical_sgl_image.cpp.
+// Not the production API — keep in sync with the experiment when that kernel changes.
+// run_angular_pipeline is the 1D test entry: sample → collect_arrivals → scan
+// residual_u(b) → bisection → select_primary_observer_hit.
+
 #include <arrivals/ArrivalCollector.h>
 #include <arrivals/ObserverAngularCoordinates.h>
 #include <geometry/WorldFrame.h>
@@ -25,6 +30,7 @@ enum class RayModel {
     Parallel,
 };
 
+// Scan sample: geodesic at impact parameter b; residual_u = plane u of intercept.
 struct ObserverHit {
     double b = 0.0;
     Arrivals::RayArrival arrival;
@@ -45,6 +51,7 @@ struct ObserverHitCandidate {
     bool selected = false;
 };
 
+// Primary Einstein-ring root: smallest positive ρ, then smaller b.
 struct SelectedObserverHit {
     ObserverHit hit;
     Eigen::Vector2d angular_coordinate = Eigen::Vector2d::Zero();
@@ -62,6 +69,8 @@ inline double impact_parameter_at(int index, int ray_count, double b_min, double
     return b_min + t * (b_max - b_min);
 }
 
+// Parallel bundle on z = −S, offset b along +X, aimed +Z (build_custom). Mirrors
+// the experiment helper of the same name.
 inline State make_parallel_null_state(const Geometry::Lens& lens, double source_distance, double b) {
     const Eigen::Vector3d world_position =
         -source_distance * Geometry::WorldFrame::optical_axis() +
@@ -139,6 +148,7 @@ inline bool is_bracketing_hit(const ObserverHit& left, const ObserverHit& right,
            (left.residual_u < 0.0 && right.residual_u > 0.0);
 }
 
+// Mirrors canonical_sgl_image: consecutive residual_u sign changes / near-zero.
 inline std::vector<ObserverHitBracket> scan_observer_hit_brackets(
     const std::vector<ObserverHit>& hits, double observer_hit_tolerance) {
     std::vector<ObserverHitBracket> brackets;
@@ -159,6 +169,7 @@ inline std::vector<ObserverHitBracket> scan_observer_hit_brackets(
     return brackets;
 }
 
+// Mirrors canonical_sgl_image: bisection on residual_u(b).
 inline ObserverHit refine_observer_hit_bisection(
     const ObserverHitBracket& bracket, const Problem::PropagationProblem& problem,
     Schwarzschild::PropagationContext& context,
@@ -203,6 +214,7 @@ inline ObserverHit refine_observer_hit_bisection(
     return right;
 }
 
+// Mirrors canonical_sgl_image: smallest positive ρ, tie-break smaller b.
 inline SelectedObserverHit select_primary_observer_hit(
     const std::vector<ObserverHitBracket>& brackets, const Problem::PropagationProblem& problem,
     const Geometry::Observer& observer, Schwarzschild::PropagationContext& context,
@@ -265,6 +277,9 @@ inline SelectedObserverHit select_primary_observer_hit(
     return selection;
 }
 
+// 1D test entry: point or parallel fan → plane arrivals → residual_u(b) brackets
+// → bisection → primary observer hit. Does not form an image or reject off-axis
+// geometry (those live in the experiment main).
 inline SelectedObserverHit run_angular_pipeline(
     const Problem::PropagationProblem& problem, Schwarzschild::PropagationContext& context,
     const Propagation::RadiusBoundTermination& fallback,

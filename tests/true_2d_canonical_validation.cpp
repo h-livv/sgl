@@ -9,6 +9,15 @@
 #include <cmath>
 #include <limits>
 
+// Experiment-level: on-axis true 2D (grid + Newton) vs 1D parallel observer-hit ρ.
+// Contract: Method B median gnomonic radius agrees with Method A within 0.02;
+//           radial scatter ≤ 0.03; ≥ 24 accepted hits; formed image is a hollow
+//           ring in all quadrants.
+// Pipeline: experiment-level true 2D, compared against the 1D angular pipeline.
+// Caveat: built by CMake but NOT registered with CTest (heavy). This test images
+//         the raw 2D angular samples; the production on-axis 2D executable still
+//         azimuthally fills via fill_aligned_observer_ring.
+
 namespace {
 
 bool has_nonzero_in_quadrant(const Imaging::Image& image, bool positive_u, bool positive_v) {
@@ -34,6 +43,7 @@ int main() {
     constexpr double angular_extent = 0.8;
     constexpr double source_distance = 30.0;
     constexpr double observer_axial_distance = 30.0;
+    // d = 0: on-axis; spherical symmetry still holds.
     constexpr double observer_transverse_u = 0.0;
     constexpr double b_max = 20.0;
     constexpr int samples_per_axis = 21;
@@ -59,6 +69,7 @@ int main() {
     const Propagation::IntegrationSettings settings{.step_size = step_size,
                                                     .max_steps = max_steps};
 
+    // Method A: 1D parallel-ray observer-hit (same root as the canonical 1D experiment).
     const AngularPipelineTest::SelectedObserverHit method_a =
         AngularPipelineTest::run_angular_pipeline(
             problem, context, fallback, settings, integrator,
@@ -67,6 +78,7 @@ int main() {
     CHECK(method_a.selected_bracket_index >= 0, "Method A selected a primary observer hit");
     CHECK(std::isfinite(method_a.angular_radius), "Method A angular radius finite");
 
+    // Method B: 21×21 search grid + Newton (12 iterations) onto the observer.
     const True2DTest::True2DPipelineResult method_b = True2DTest::collect_observer_angular_samples(
         problem, Rays::RayGrid2DSamplingConfig{.samples_per_axis = samples_per_axis,
                                                .max_impact_parameter = b_max},

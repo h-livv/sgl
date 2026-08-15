@@ -8,10 +8,19 @@
 #include <cmath>
 #include <limits>
 
+// Experiment-level: off-axis true 2D imaging (d = 1), no azimuthal copy.
+// Contract: enough Newton hits to form a nonempty image that is not forced
+//           circular (centroid offset OR second-moment anisotropy).
+// Pipeline: experiment-level true 2D. Hits are imaged as-is.
+// Caveat: built by CMake but NOT registered with CTest (heavy). The OR
+//         condition can pass a centered anisotropic image or an offset
+//         near-circular one. Hit-at-observer is tested in off_axis_observer_hit.cpp.
+
 int main() {
     constexpr double angular_extent = 0.8;
     constexpr double source_distance = 30.0;
     constexpr double observer_axial_distance = 30.0;
+    // d = 1 (world +X): spherical symmetry is broken; 1D azimuthal copy would be wrong.
     constexpr double observer_transverse_u = 1.0;
     constexpr double b_max = 20.0;
     constexpr int samples_per_axis = 21;
@@ -48,6 +57,7 @@ int main() {
     const Eigen::Vector2d mean = True2DTest::centroid(result.angular_coordinates);
     const double anisotropy = True2DTest::second_moment_anisotropy(result.angular_coordinates);
 
+    // Either a shifted centroid or an elongated second moment is enough to reject a copied ring.
     CHECK(mean.norm() >= 0.01 || anisotropy >= 0.15,
           "off-axis image is not constrained to circular symmetry");
 

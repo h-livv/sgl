@@ -5,6 +5,15 @@
 #include <limits>
 #include <vector>
 
+// Experiment-level: Einstein-ring angular radius vs source distance S.
+// Contract: R_equiv = D·ρ increases from S = 50 → 100 → 200; S = 200 is closer
+//           to the parallel (infinite-S) limit than S = 100.
+// Pipeline: same 1D observer-hit path as angular_image_pipeline.cpp.
+// Caveat: R_equiv is a gnomonic-screen equivalent, not a measured focal radius.
+//         An older spatial-intercept radius *decreased* with S — that quantity
+//         is retired. Parallel still builds a problem at S = 30 but launches
+//         parallel rays (infinite-S stand-in).
+
 namespace {
 
 double equivalent_ring_radius(const AngularPipelineTest::SelectedObserverHit& selection,
@@ -59,6 +68,7 @@ int main() {
         run_case(100.0, AngularPipelineTest::RayModel::Point);
     const AngularPipelineTest::SelectedObserverHit s200 =
         run_case(200.0, AngularPipelineTest::RayModel::Point);
+    // Problem still has S = 30; RayModel::Parallel is the infinite-source launch, not S → ∞ in the geometry.
     const AngularPipelineTest::SelectedObserverHit parallel =
         run_case(30.0, AngularPipelineTest::RayModel::Parallel);
 

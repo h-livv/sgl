@@ -12,6 +12,7 @@ bool is_finite(const Eigen::Vector3d& v) {
 
 } // namespace
 
+// Validates orthonormality; does not normalize or orthogonalize the inputs.
 Observer::Observer(const Eigen::Vector3d& position, const Eigen::Vector3d& forward,
                    const Eigen::Vector3d& up)
     : position_(position), forward_(forward), up_(up) {
@@ -39,6 +40,7 @@ Observer Observer::looking_at(const Eigen::Vector3d& position, const Eigen::Vect
         throw std::invalid_argument("Observer::looking_at: target must differ from position");
     }
     const Eigen::Vector3d forward = to_target.normalized();
+    // Remove the component along the view direction so (forward, up, right) is orthonormal.
     const Eigen::Vector3d up_residual = up_hint - up_hint.dot(forward) * forward;
     if (up_residual.norm() <= kOrthonormalityTolerance) {
         throw std::invalid_argument(

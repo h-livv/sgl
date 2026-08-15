@@ -5,6 +5,13 @@
 #include <stdexcept>
 #include <vector>
 
+// Rays: RayEnsemble id/index invariant and copy isolation.
+// Contract: add() and the vector constructor assign id == insertion index;
+//           set_initial_state mutates one ray without renaming ids or aliasing
+//           neighbors/copies.
+// Pipeline: rays (sgl_rays). EnsemblePropagator and arrivals index by this id.
+// Caveat: ids are never reused or reordered.
+
 namespace {
 
 bool equal_state_bits(const State& a, const State& b) {

@@ -6,6 +6,15 @@
 
 #include <limits>
 
+// Geometry/problem: PropagationProblem validation and make_aligned_problem.
+// Contract: lens at origin, source at (0,0,−S), observer at (0,0,+D) looking
+//           −Z; image plane attached with +Z normal; chart-frame round trip;
+//           rs ≤ 0, horizon-interior source/observer, flipped or laterally
+//           shifted planes are rejected.
+// Pipeline: geometry → problem construction, before ray sampling.
+// Caveat: an off-axis observer is constructible here; 1D imaging experiments
+//         still refuse d ≠ 0.
+
 namespace {
 
 bool vectors_close(const Eigen::Vector3d& actual, const Eigen::Vector3d& expected,
@@ -90,6 +99,7 @@ int main() {
               translated_point, 1e-15),
           "translated chart round trip");
 
+    // d ≠ 0 is a valid problem object; it does not enable the 1D azimuthal path.
     Geometry::Lens off_axis_lens;
     off_axis_lens.parameters.rs = 1.0;
     Geometry::Source off_axis_source;
@@ -127,6 +137,7 @@ int main() {
     expect_invalid_problem(problem.lens(), non_finite_source, problem.observer(),
                            problem.image_plane());
 
+    // Negating v flips handedness so normal no longer matches −forward.
     Geometry::ImagePlane flipped_plane(
         problem.image_plane().origin(), problem.image_plane().u_axis(),
         -problem.image_plane().v_axis(), problem.image_plane().half_width(),

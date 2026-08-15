@@ -17,12 +17,12 @@ std::vector<PlaneArrival> expand_azimuthally(const std::vector<RayArrival>& arri
 
     for (const RayArrival& arrival : arrivals) {
         if (arrival.status != ArrivalStatus::Arrived) {
-            continue;
+            continue;  // not index-aligned: misses are dropped, not padded
         }
         const double u = plane.to_plane_coordinates(arrival.world_position).x();
         if (u == 0.0) {
             expanded.push_back(PlaneArrival{arrival.ray_id, Eigen::Vector2d::Zero()});
-            continue;
+            continue;  // on-axis foot: one sample, v discarded
         }
         for (int k = 0; k < azimuth_count; ++k) {
             const double psi = 2.0 * M_PI * static_cast<double>(k) /

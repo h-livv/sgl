@@ -9,6 +9,15 @@
 
 #include <limits>
 
+// Arrivals: collect_arrivals (propagate + localize, index-aligned).
+// Contract: each escaping ray yields Arrived on the observer plane with unit
+//           direction toward +normal; captured b < b_crit is NoCrossing;
+//           repeated collection is identical; arrival[i].ray_id == ensemble[i].id.
+// Pipeline: arrivals, wiring rays to the observer plane. Imaging still needs
+//           angular coordinates after this.
+// Caveat: escape_radius is infinite so a glancing ray is not killed by large
+//         Schwarzschild r before its world trajectory crosses the plane.
+
 namespace {
 
 bool vectors_close(const Eigen::Vector3d& actual, const Eigen::Vector3d& expected,
@@ -48,6 +57,7 @@ int main() {
     const Propagation::IntegrationSettings settings{.step_size = 0.01, .max_steps = 200000};
 
     const double b_crit = Physics::Observables::critical_impact_parameter(params.rs);
+    // All three b values exceed b_crit: they must reach the observer plane, not the horizon.
     const Rays::RaySampler sampler(Rays::RaySamplingConfig{
         .ray_count = 3,
         .min_impact_parameter = b_crit + 0.5,
@@ -89,6 +99,7 @@ int main() {
         CHECK(arrivals_equal(arrivals[i], repeated[i]), "repeated arrivals are bitwise identical");
     }
 
+    // b < b_crit: geodesic falls in; collect_arrivals must report NoCrossing, not a fake plane hit.
     const Rays::RaySampler captured_sampler(Rays::RaySamplingConfig{
         .ray_count = 1,
         .min_impact_parameter = b_crit - 0.5,

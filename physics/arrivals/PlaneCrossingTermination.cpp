@@ -10,6 +10,8 @@ PlaneCrossingTermination::PlaneCrossingTermination(const Geometry::Lens& lens,
     : lens_(lens), plane_(plane), fallback_(fallback) {}
 
 bool PlaneCrossingTermination::should_terminate(const State& state) const {
+    // Fallback first so capture/escape still win on the same sample as a
+    // plane crossing. Position-only map: cheap enough for every RK4 step.
     if (fallback_.should_terminate(state)) {
         return true;
     }

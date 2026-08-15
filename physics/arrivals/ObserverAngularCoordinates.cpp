@@ -17,10 +17,11 @@ observer_angular_coordinates(const RayArrival& arrival, const Geometry::Observer
         return std::nullopt;
     }
 
+    // Incoming sky direction: reverse the outgoing geodesic tangent.
     const Eigen::Vector3d view = -arrival.world_direction / direction_norm;
     const double den = view.dot(observer.forward());
     if (den <= 0.0) {
-        return std::nullopt;
+        return std::nullopt;  // incoming direction is behind the camera
     }
 
     const Eigen::Vector2d angular(view.dot(observer.right()) / den,
@@ -41,7 +42,7 @@ std::vector<Eigen::Vector2d> expand_angular_azimuthally(double signed_u_ang, int
 
     if (signed_u_ang == 0.0) {
         expanded.push_back(Eigen::Vector2d::Zero());
-        return expanded;
+        return expanded;  // on-axis sky direction: one sample at the origin
     }
 
     for (int k = 0; k < azimuth_count; ++k) {
@@ -57,7 +58,7 @@ std::vector<Eigen::Vector2d>
 fill_aligned_observer_ring(const std::vector<Eigen::Vector2d>& refined_angular,
                            double observer_distance, int azimuth_count) {
     if (observer_distance != 0.0 || refined_angular.empty()) {
-        return refined_angular;
+        return refined_angular;  // off-axis or nothing to fill: keep refined hits
     }
 
     std::vector<double> radii;
@@ -67,6 +68,7 @@ fill_aligned_observer_ring(const std::vector<Eigen::Vector2d>& refined_angular,
     }
     std::sort(radii.begin(), radii.end());
     const std::size_t mid = radii.size() / 2;
+    // Median |angular| of the refined hits; ρ ≥ 0 so the copied ring is unsigned.
     const double rho = (radii.size() % 2 == 1)
                            ? radii[mid]
                            : 0.5 * (radii[mid - 1] + radii[mid]);

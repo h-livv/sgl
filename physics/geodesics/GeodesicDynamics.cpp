@@ -11,13 +11,14 @@ State GeodesicDynamics::compute_derivative(const State& state) const {
         for (int alpha = 0; alpha < 4; ++alpha) {
             for (int beta = 0; beta < 4; ++beta) {
                 double Gamma = metric_.christoffel(mu, alpha, beta, state.X);
-                if (Gamma != 0.0) {
+                if (Gamma != 0.0) { // skip identically zero index combinations
                     a[mu] -= Gamma * state.U[alpha] * state.U[beta];
                 }
             }
         }
     }
 
+    // dX/dλ = U, dU/dλ = a^μ = −Γ^μ_αβ U^α U^β. Analytic Γ is exactly 0 when unused.
     return State(state.U, a);
 }
 

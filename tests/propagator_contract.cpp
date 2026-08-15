@@ -8,8 +8,18 @@
 #include <type_traits>
 #include <vector>
 
+// Kernel: Propagator API in isolation (no Schwarzschild metric).
+// Contract: step-budget vs Terminated vs immediate/zero-budget; recorded path
+//           is [initial] + steps; append does not clear a prefilled vector;
+//           invalid step_size / max_steps throw; reverse dt is allowed;
+//           StepCorrection runs on even step indices.
+// Pipeline: kernel. previous_state exists so arrivals can interpolate a plane hit.
+// Caveat: toy free motion + Euler, not RK4/Schwarzschild. Does not assert
+//         previous_state contents beyond structured-binding availability.
+
 namespace {
 
+// X' = U, U' = 0: Euler is exact, so position checks are not integrator error.
 class FreeMotionDynamics final : public Dynamics::DynamicsModel {
 public:
     State compute_derivative(const State& state) const override {
@@ -71,7 +81,7 @@ int main() {
     const Propagation::PropagationOutcome basic =
         Propagation::propagate(initial, dynamics, never_terminate, settings, integrator);
     auto [final_state, steps_taken, status, previous_state] = basic;
-    (void)previous_state;
+    (void)previous_state;  // field is for plane interpolation; this test checks the rest of the API
     CHECK(steps_taken == 1000, "step count mismatch");
     CHECK(status == Propagation::PropagationStatus::StepBudgetExhausted, "status mismatch");
     CHECK_CLOSE(final_state.X[0], initial.X[0] + 10.0, 1e-12, "x0 propagation mismatch");
@@ -153,6 +163,7 @@ int main() {
     }
     CHECK(threw, "expected throw for max_steps<0");
 
+    // Affine parameter may run backward; step_size sign is not an error.
     const Propagation::IntegrationSettings reverse_settings{.step_size = -0.01, .max_steps = 1000};
     const Propagation::PropagationOutcome reverse =
         Propagation::propagate(initial, dynamics, never_terminate, reverse_settings, integrator);

@@ -54,7 +54,7 @@ double& Image::at(std::size_t x, std::size_t y) {
     if (x >= width_ || y >= height_) {
         throw std::out_of_range("Image: pixel index out of range");
     }
-    return intensity_[y * width_ + x];
+    return intensity_[y * width_ + x];  // row-major: y varies slowest in linear index
 }
 
 double Image::at(std::size_t x, std::size_t y) const {
@@ -76,7 +76,7 @@ Image Image::normalized_to_max() const {
     const double max_value = max_intensity();
     if (max_value > 0.0) {
         for (double& value : normalized.intensity_) {
-            value /= max_value;
+            value /= max_value;  // display scale; not lens magnification
         }
     }
     return normalized;

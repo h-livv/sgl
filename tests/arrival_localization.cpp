@@ -9,6 +9,13 @@
 
 #include <cmath>
 
+// Arrivals: localize_arrival interpolates the last integrator segment onto the plane.
+// Contract: a sign-changing axial/off-axis step lands on z = D; receding or
+//           short-of-plane segments are NoCrossing; ray_id is preserved either way.
+// Pipeline: arrivals. collect_arrivals wraps this after plane-crossing termination.
+// Caveat: if previous == final already past the plane, status is Arrived at that
+//         state (t = 0); there is no back-projection onto the plane.
+
 namespace {
 
 State chart_state_at(const Geometry::Lens& lens, const Eigen::Vector3d& world_point,
@@ -47,6 +54,7 @@ int main() {
     const Geometry::ImagePlane& plane = problem.image_plane();
 
     const Eigen::Vector3d forward(0.0, 0.0, 1.0);
+    // Last step straddles z = 30: linear interpolate in world coordinates, not a geodesic root.
     const State axial_prev =
         chart_state_at(lens, Eigen::Vector3d(0.0, 0.0, 29.5), forward);
     const State axial_curr =
@@ -61,6 +69,7 @@ int main() {
               1e-9 * std::max(1.0, axial.world_position.norm()),
           "axial position lies on the plane");
 
+    // Endpoints (1,0,29.5) → (3,0,30.5): hit must be the interpolated (2,0,30), not either state.
     const State off_prev = chart_state_at(lens, Eigen::Vector3d(1.0, 0.0, 29.5), forward);
     const State off_curr = chart_state_at(lens, Eigen::Vector3d(3.0, 0.0, 30.5), forward);
     const Arrivals::RayArrival off_axis = Arrivals::localize_arrival(
@@ -99,6 +108,7 @@ int main() {
 
     const State recede_prev = chart_state_at(lens, Eigen::Vector3d(0.0, 0.0, 10.0), forward);
     const State recede_curr = chart_state_at(lens, Eigen::Vector3d(0.0, 0.0, 9.0), forward);
+    // Moving away from the plane (both samples still on the lens side) is not a crossing.
     const Arrivals::RayArrival receding = Arrivals::localize_arrival(
         3, lens, plane, make_outcome(recede_prev, recede_curr, 1));
     CHECK(receding.status == Arrivals::ArrivalStatus::NoCrossing, "receding status");
@@ -113,6 +123,7 @@ int main() {
           "on-plane signed distance");
 
     const State beyond_plane = chart_state_at(lens, Eigen::Vector3d(0.0, 0.0, 31.0), forward);
+    // previous == final already on the observer side: Arrived at z = 31, not snapped to the plane.
     const Arrivals::RayArrival beyond = Arrivals::localize_arrival(
         5, lens, plane, make_outcome(beyond_plane, beyond_plane, 0));
     CHECK(beyond.status == Arrivals::ArrivalStatus::Arrived, "beyond-plane status");

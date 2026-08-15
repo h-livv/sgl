@@ -8,6 +8,14 @@
 #include <cmath>
 #include <limits>
 
+// Rays: RayGrid2DSampler — cell-centered (b_u, b_v) search grid for true 2D.
+// Contract: N×N ensemble; first/last samples at cell centers of [−b_max, b_max];
+//           id == index; null Hamiltonian small; resample bitwise; state_for is
+//           independent of the observer (parallel aim from the source).
+// Pipeline: rays, true-2D path. Newton later steers a subset onto the observer.
+// Caveat: launches are not camera rays. Off-axis observer position does not
+//         change the initial 4-velocity.
+
 namespace {
 
 bool state_is_finite(const State& state) {
@@ -36,6 +44,7 @@ int main() {
         .samples_per_axis = samples_per_axis, .max_impact_parameter = b_max};
     Rays::RayGrid2DSampler sampler(config);
 
+    // Cell centers, not edges: −b_max + Δ/2 … +b_max − Δ/2, so adjacent cells do not double-count.
     CHECK_CLOSE(sampler.grid_value_at(0), -b_max + 0.5 * (2.0 * b_max / samples_per_axis), 1e-15,
                 "first cell center");
     CHECK_CLOSE(sampler.grid_value_at(samples_per_axis - 1),
@@ -89,6 +98,7 @@ int main() {
         Geometry::ImagePlane::attached_to(off_axis_observer, half_extent, half_extent);
     const Problem::PropagationProblem off_axis_problem(lens, source, off_axis_observer, off_plane);
 
+    // Search rays are sourced at the source with parallel aim; the camera does not steer U.
     const State aligned_launch = sampler.state_for(problem, 4.0, -3.0);
     const State off_axis_launch = sampler.state_for(off_axis_problem, 4.0, -3.0);
     CHECK(aligned_launch.X == off_axis_launch.X, "launch position independent of observer");

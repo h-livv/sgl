@@ -12,6 +12,13 @@
 #include <omp.h>
 #endif
 
+// Rays: OpenMP invariance of EnsemblePropagator.
+// Contract: two serial runs match bit-for-bit, including previous_state;
+//           1 thread vs 4 threads match (no shared writable integrator state).
+// Pipeline: rays. previous_state is compared because arrivals interpolate with it.
+// Caveat: the 1-vs-4 check is compiled out when OpenMP is absent; a serial
+//         build can still pass without testing parallel invariance.
+
 namespace {
 
 bool equal_state_bits(const State& a, const State& b) {
@@ -72,6 +79,7 @@ int main() {
     const Rays::RayOutcomes serial = Rays::propagate_ensemble(
         ensemble, context.dynamics(), context.termination(), settings, integrator,
         context.correction());
+    // Same ensemble, different thread count: results must not depend on scheduling.
     omp_set_num_threads(4);
     const Rays::RayOutcomes parallel = Rays::propagate_ensemble(
         ensemble, context.dynamics(), context.termination(), settings, integrator,

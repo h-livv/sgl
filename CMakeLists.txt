@@ -7,6 +7,12 @@ endif()
 
 project(SGL LANGUAGES CXX)
 
+# Layered Schwarzschild-lensing libraries. Each target may depend only on
+# layers below it: physics (kernel) → geometry (no kernel) → rays → arrivals
+# → imaging. Experiments sgl_canonical_sgl_image (1D Einstein ring) and
+# sgl_true_2d_sgl_image (2D launch-plane Newton) link sgl_imaging. Tests are
+# standalone CHECK() mains, not GoogleTest.
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -14,6 +20,7 @@ find_package(Eigen3 CONFIG REQUIRED)
 find_package(OpenMP)
 
 # Schwarzschild GR / geodesic numerical engine (extracted from Penrose).
+# Metric, RK4, propagator, initial states — no lens/source/observer geometry.
 set(SGL_PHYSICS_SOURCES
     physics/metrics/CoordinateChart.cpp
     physics/metrics/SchwarzschildMetric.cpp
@@ -33,7 +40,8 @@ target_include_directories(sgl_physics
 )
 target_link_libraries(sgl_physics PUBLIC Eigen3::Eigen)
 
-# SGL problem geometry. Deliberately independent of the numerical kernel:
+# SGL problem geometry (lens, source, observer, image plane, PropagationProblem).
+# Deliberately independent of the numerical kernel:
 # this target links Eigen only and must never link sgl_physics.
 add_library(sgl_geometry STATIC
     physics/geometry/Observer.cpp
@@ -43,7 +51,8 @@ add_library(sgl_geometry STATIC
 target_include_directories(sgl_geometry PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
 target_link_libraries(sgl_geometry PUBLIC Eigen3::Eigen)
 
-# Ray ensembles. First layer permitted to link both the geometry and the kernel.
+# Ray ensembles and samplers (1D point fan, 2D launch-plane search grid).
+# First layer permitted to link both the geometry and the kernel.
 add_library(sgl_rays STATIC
     physics/rays/RayEnsemble.cpp
     physics/rays/RaySampler.cpp
@@ -56,7 +65,9 @@ if(OpenMP_CXX_FOUND)
     target_link_libraries(sgl_rays PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
-# Observer-plane arrivals. Consumes the ensemble path; the kernel never depends on it.
+# Observer-plane arrivals: collect_arrivals, azimuthal expand, Gauss-Newton
+# observer-hit refine, gnomonic angular coordinates.
+# Consumes the ensemble path; the kernel never depends on it.
 add_library(sgl_arrivals STATIC
     physics/arrivals/ChartMapping.cpp
     physics/arrivals/PlaneCrossingTermination.cpp
@@ -71,7 +82,8 @@ if(OpenMP_CXX_FOUND)
     target_link_libraries(sgl_arrivals PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
-# Scientific image formation from plane arrivals.
+# Scientific image formation from plane / gnomonic (u, v) samples (+1 per
+# sample). CSV/PGM I/O lives in the experiment executables, not here.
 add_library(sgl_imaging STATIC
     physics/imaging/Image.cpp
     physics/imaging/ImageFormation.cpp
@@ -79,15 +91,21 @@ add_library(sgl_imaging STATIC
 target_include_directories(sgl_imaging PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/physics)
 target_link_libraries(sgl_imaging PUBLIC sgl_arrivals)
 
+# 1D symmetry-reduced Einstein ring: scan residual_u(b), bisect, azimuthal expand.
+# Rejects a nonzero CLI --observer-distance (transverse d).
 add_executable(sgl_canonical_sgl_image experiments/canonical_sgl_image.cpp)
 target_link_libraries(sgl_canonical_sgl_image PRIVATE sgl_imaging)
 
+# 2D launch-plane search + Gauss-Newton. Search geodesics are never binned.
+# Allows a transverse observer offset (CLI --observer-distance).
 add_executable(sgl_true_2d_sgl_image experiments/true_2d_sgl_image.cpp)
 target_link_libraries(sgl_true_2d_sgl_image PRIVATE sgl_imaging)
 
 option(SGL_BUILD_TESTS "Build the test suite" ON)
 if(SGL_BUILD_TESTS)
     enable_testing()
+    # Standalone CHECK() mains (tests/support, not GoogleTest). Angular/True2D
+    # helpers duplicate the experiment kernels for regression.
 
     add_executable(sgl_null_scatter_regression tests/null_scatter_regression.cpp)
     target_link_libraries(sgl_null_scatter_regression PRIVATE sgl_physics)

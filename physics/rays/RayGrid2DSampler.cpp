@@ -34,6 +34,7 @@ State RayGrid2DSampler::state_for(const Problem::PropagationProblem& problem, do
     const Eigen::Vector3d world_position =
         problem.source().position + b_u * Geometry::WorldFrame::plane_u_axis() +
         b_v * Geometry::WorldFrame::plane_v_axis();
+    // Parallel bundle: same source→lens direction for every (b_u, b_v), not offset→lens.
     const Eigen::Vector3d to_lens = problem.lens().position - problem.source().position;
     const double to_lens_norm = to_lens.norm();
     if (to_lens_norm <= Geometry::kOrthonormalityTolerance) {
@@ -55,7 +56,7 @@ State RayGrid2DSampler::state_for(const Problem::PropagationProblem& problem, do
     initial.r0 = spherical.X[1];
     initial.theta0 = spherical.X[2];
     initial.phi0 = spherical.X[3];
-    initial.vt = 0.0;
+    initial.vt = 0.0; // build_custom fills vt from the null constraint.
     initial.vr = spherical.U[1];
     initial.vtheta = spherical.U[2];
     initial.vphi = spherical.U[3];
@@ -67,6 +68,7 @@ RayEnsemble RayGrid2DSampler::sample(const Problem::PropagationProblem& problem)
     samples_.clear();
     RayEnsemble ensemble;
 
+    // Row-major: j = b_v (outer), i = b_u (inner). ray_id matches this order.
     for (int j = 0; j < config_.samples_per_axis; ++j) {
         const double b_v = grid_value_at(j);
         for (int i = 0; i < config_.samples_per_axis; ++i) {

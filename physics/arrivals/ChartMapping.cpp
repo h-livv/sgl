@@ -11,6 +11,7 @@ Eigen::Vector3d world_position(const Geometry::Lens& lens, const State& chart_st
     const double r = chart_state.X[1];
     const double theta = chart_state.X[2];
     const double phi = chart_state.X[3];
+    // Standard spherical embedding; translation/rotation is from_chart_frame.
     const Eigen::Vector3d chart_point(r * std::cos(phi) * std::sin(theta),
                                       r * std::sin(phi) * std::sin(theta),
                                       r * std::cos(theta));
@@ -18,9 +19,9 @@ Eigen::Vector3d world_position(const Geometry::Lens& lens, const State& chart_st
 }
 
 Eigen::Vector3d world_direction(const Geometry::Lens& lens, const State& chart_state) {
-    (void)lens;
+    (void)lens;  // API mirrors world_position; translation does not act on U.
     State spherical = chart_state;
-    const State cartesian = CoordinateChart::sph_to_cart(spherical);
+    const State cartesian = CoordinateChart::sph_to_cart(spherical);  // Jacobian on U
     const Eigen::Vector3d chart_velocity(cartesian.U[1], cartesian.U[2], cartesian.U[3]);
     const Eigen::Vector3d world_velocity = Geometry::WorldFrame::chart_to_world(chart_velocity);
     const double norm = world_velocity.norm();

@@ -1,3 +1,21 @@
+// 1D symmetry-reduced Einstein-ring experiment (sgl_canonical_sgl_image).
+//
+// Geometry (geometrized units, rs = 1): lens at the origin, source at (0,0,−S),
+// observer at d·X + D·Z looking at the origin, image plane attached_to.
+// CLI --observer-distance is the transverse +X offset d; --observer-axial-distance
+// is D along +Z. Neither is PropagationProblem::observer_distance() (|observer−lens|).
+// This path REJECTS d ≠ 0: azimuthal expansion assumes an on-axis observer.
+//
+// Data flow: 1D fan in impact parameter b → collect_arrivals (PlaneCrossing +
+// RK4 + localize) → residual_u(b) = plane u of intercept → bracket sign changes
+// / near-zero → bisection → primary hit (smallest positive angular radius ρ,
+// tie-break smaller b) → expand_angular_azimuthally(signed u_ang) → form_image
+// (+1 per sample) → normalize_to_max → CSV/PGM/summary.
+// θ_E = atan(ρ), R_equiv = D·ρ. The image is visualization; the scalar ring
+// radius is the observer-hit root. The 1D b-scan rays are not the image samples.
+//
+// Kernel knobs: horizon_safety_factor 1.0001, null projection every 1000 steps.
+
 #include <arrivals/ArrivalCollector.h>
 #include <arrivals/ObserverAngularCoordinates.h>
 #include <geometry/ImagePlane.h>
@@ -32,44 +50,52 @@
 namespace {
 
 enum class RayModel {
-    Point,
-    Parallel,
+    Point,     // shared source event, b = L/E (build_null_scatter)
+    Parallel,  // launch plane z = −S, offset b along +X, aimed +Z (build_custom)
 };
 
 struct CliOptions {
     std::string output_dir = "outputs/sgl_forward";
-    int ray_count = 801;
-    int azimuth_count = 720;
-    int resolution = 1024;
+    int ray_count = 801;       // 1D samples in b; print_usage still says 41
+    int azimuth_count = 720;   // copies of the signed equatorial u_ang
+    int resolution = 1024;     // square pixels; print_usage still says 512
     // Tangent-plane angular extent (dimensionless gnomonic coordinates).
+    // Imaging window ±extent/2; not the launch-plane b range.
     double extent = 0.8;
-    double b_min = 2.0;
+    double b_min = 2.0;        // launch impact-parameter sweep (not image coords)
     double b_max = 20.0;
-    double step_size = 0.01;
+    double step_size = 0.01;   // RK4 affine-parameter step
     int max_steps = 300000;
-    double source_distance = 30.0;
+    double source_distance = 30.0;  // S: source along −Z
     // Distance along the optical axis (+Z) from the lens to the observer.
+    // CLI --observer-axial-distance (D). Not |observer−lens|.
     double observer_axial_distance = 30.0;
     // Perpendicular distance from the focal line / optical axis (along +X).
     // Zero is on-axis (Einstein ring); nonzero is an off-axis observer.
+    // CLI --observer-distance (d). This 1D path rejects d ≠ 0; use
+    // true_2d_sgl_image for off-axis. Not PropagationProblem::observer_distance().
     double observer_distance = 0.0;
-    double observer_hit_tolerance = 1e-6;
-    int max_root_iterations = 60;
+    double observer_hit_tolerance = 1e-6;  // |residual_u| for an accepted root
+    int max_root_iterations = 60;          // bisection cap per bracket
     RayModel ray_model = RayModel::Point;
 };
 
+// Geodesic launched at b; residual_u = plane u of intercept (NaN if no arrival).
+// F(b) = 0 is an observer hit, not merely a plane crossing.
 struct ObserverHit {
     double b = 0.0;
     Arrivals::RayArrival arrival;
     double residual_u = 0.0;
 };
 
+// Adjacent scan samples whose residual_u changes sign (or is already near zero).
 struct ObserverHitBracket {
     ObserverHit left;
     ObserverHit right;
     int index = 0;
 };
 
+// Bisected root plus observer gnomonic (u_ang, v_ang) and ρ = ||angular||.
 struct ObserverHitCandidate {
     ObserverHit hit;
     Eigen::Vector2d angular_coordinate = Eigen::Vector2d::Zero();
@@ -78,6 +104,7 @@ struct ObserverHitCandidate {
     bool selected = false;
 };
 
+// Primary Einstein-ring root: smallest positive ρ, then smaller b.
 struct SelectedObserverHit {
     ObserverHit hit;
     Eigen::Vector2d angular_coordinate = Eigen::Vector2d::Zero();
@@ -98,6 +125,8 @@ const char* ray_model_name(RayModel model) {
 }
 
 void print_usage(std::ostream& out) {
+    // Help text defaults (ray-count 41, resolution 512) are stale vs CliOptions
+    // (801, 1024). Do not treat this string as the source of defaults.
     out << "Usage: sgl_canonical_sgl_image [options]\n"
         << "  --output-dir <dir>              Output directory (default: outputs/sgl_forward)\n"
         << "  --ray-count <int>               Number of impact-parameter samples (default: 41)\n"
@@ -267,6 +296,8 @@ bool parse_args(int argc, char** argv, CliOptions& options) {
     return true;
 }
 
+// Inclusive linear sweep b_i in [b_min, b_max]. Same index pairing is used
+// later to attach b to collect_arrivals results (index-aligned with the ensemble).
 double impact_parameter_at(int index, int ray_count, double b_min, double b_max) {
     if (ray_count == 1) {
         return b_min;
@@ -277,6 +308,7 @@ double impact_parameter_at(int index, int ray_count, double b_min, double b_max)
 
 // Parallel null rays on the launch plane z = -source_distance, offset by impact
 // parameter b along +X, all aimed along +Z (toward the lens / observer).
+// Uses build_custom (Cartesian direction through the chart); not build_null_scatter.
 State make_parallel_null_state(const Geometry::Lens& lens, double source_distance, double b) {
     const Eigen::Vector3d world_position =
         -source_distance * Geometry::WorldFrame::optical_axis() +
@@ -302,6 +334,7 @@ State make_parallel_null_state(const Geometry::Lens& lens, double source_distanc
     return Schwarzschild::build_custom(lens.parameters, initial, Schwarzschild::GeodesicKind::Null);
 }
 
+// 1D parallel fan (--ray-model parallel). Not used by the point-source path.
 Rays::RayEnsemble sample_parallel_rays(const Geometry::Lens& lens, double source_distance,
                                        int ray_count, double b_min, double b_max) {
     Rays::RayEnsemble ensemble;
@@ -312,6 +345,8 @@ Rays::RayEnsemble sample_parallel_rays(const Geometry::Lens& lens, double source
     return ensemble;
 }
 
+// Re-propagate a single b during bisection. Point: RaySampler with min=max=b
+// (shared source event). Parallel: one launch-plane ray.
 Rays::RayEnsemble make_single_ray_ensemble(const Problem::PropagationProblem& problem,
                                            RayModel ray_model, double source_distance,
                                            double b) {
@@ -325,6 +360,7 @@ Rays::RayEnsemble make_single_ray_ensemble(const Problem::PropagationProblem& pr
     return ensemble;
 }
 
+// Signed plane-u miss. On axis the observer is the plane origin, so 0 is a hit.
 double residual_u_for_arrival(const Geometry::ImagePlane& plane,
                               const Arrivals::RayArrival& arrival) {
     if (arrival.status != Arrivals::ArrivalStatus::Arrived) {
@@ -333,6 +369,7 @@ double residual_u_for_arrival(const Geometry::ImagePlane& plane,
     return plane.to_plane_coordinates(arrival.world_position).x();
 }
 
+// One geodesic at b → collect_arrivals → residual_u(b). Used by bisection.
 ObserverHit propagate_one_for_b(const Problem::PropagationProblem& problem,
                                 Schwarzschild::PropagationContext& context,
                                 const Propagation::RadiusBoundTermination& fallback,
@@ -351,6 +388,7 @@ ObserverHit propagate_one_for_b(const Problem::PropagationProblem& problem,
     return hit;
 }
 
+// Sign change of residual_u, or either sample already within tolerance.
 bool is_bracketing_hit(const ObserverHit& left, const ObserverHit& right,
                        double observer_hit_tolerance) {
     if (!std::isfinite(left.residual_u) || !std::isfinite(right.residual_u)) {
@@ -364,6 +402,7 @@ bool is_bracketing_hit(const ObserverHit& left, const ObserverHit& right,
            (left.residual_u < 0.0 && right.residual_u > 0.0);
 }
 
+// Consecutive scan pairs. A singleton fan that already hits is one bracket.
 std::vector<ObserverHitBracket> scan_observer_hit_brackets(
     const std::vector<ObserverHit>& hits, double observer_hit_tolerance) {
     std::vector<ObserverHitBracket> brackets;
@@ -386,6 +425,8 @@ std::vector<ObserverHitBracket> scan_observer_hit_brackets(
     return brackets;
 }
 
+// Bisection on residual_u(b). If the midpoint fails to arrive, stop and keep
+// the closer endpoint (may still exceed tolerance; main checks that).
 ObserverHit refine_observer_hit_bisection(const ObserverHitBracket& bracket,
                                           const Problem::PropagationProblem& problem,
                                           Schwarzschild::PropagationContext& context,
@@ -437,6 +478,7 @@ ObserverHit refine_observer_hit_bisection(const ObserverHitBracket& bracket,
     return right;
 }
 
+// Refine every bracket; keep smallest positive gnomonic ρ, tie-break smaller b.
 SelectedObserverHit select_primary_observer_hit(
     const std::vector<ObserverHitBracket>& brackets, const Problem::PropagationProblem& problem,
     const Geometry::Observer& observer, Schwarzschild::PropagationContext& context,
@@ -499,6 +541,7 @@ SelectedObserverHit select_primary_observer_hit(
     return selection;
 }
 
+// Scientific dump of normalized counts, row-major, low-v first (not flipped).
 void write_csv(const std::filesystem::path& path, const Imaging::Image& image) {
     std::ofstream out(path);
     if (!out) {
@@ -525,6 +568,7 @@ void write_csv(const std::filesystem::path& path, const Imaging::Image& image) {
     }
 }
 
+// Visualization. Rows written high-v to low-v so +v is visually up.
 void write_pgm(const std::filesystem::path& path, const Imaging::Image& image) {
     std::ofstream out(path);
     if (!out) {
@@ -546,6 +590,7 @@ void write_pgm(const std::filesystem::path& path, const Imaging::Image& image) {
     }
 }
 
+// Run metadata. θ_E and R_equiv come from the observer-hit root, not pixels.
 void write_summary(const std::filesystem::path& path, const CliOptions& options,
                    std::size_t ray_count, std::size_t raw_arrivals, std::size_t arrived_count,
                    const SelectedObserverHit& selection, std::size_t angular_sample_count,
@@ -588,6 +633,7 @@ void write_summary(const std::filesystem::path& path, const CliOptions& options,
     // Primary Einstein-ring radius: true angular radius from the observer-hit root.
     // theta_E = atan(rho) with rho the gnomonic tangent-plane radius. Not derived from
     // image pixels or radial histograms.
+    // R_equiv = D * ρ, a length at the observer's axial distance.
     const double theta_E = std::atan(selection.angular_radius);
     const double R_equiv = options.observer_axial_distance * selection.angular_radius;
     out << "selected_angular_theta=" << theta_E << '\n';
@@ -611,6 +657,8 @@ void write_summary(const std::filesystem::path& path, const CliOptions& options,
 } // namespace
 
 int main(int argc, char** argv) {
+    // Stages: parse/validate → geometry (on-axis only) → kernel → sample 1D fan
+    // → collect_arrivals → scan/bisect residual_u(b) → azimuthal expand → image → I/O.
     CliOptions options;
     if (!parse_args(argc, argv, options)) {
         return 1;
@@ -640,12 +688,14 @@ int main(int argc, char** argv) {
                      "max-root-iterations >= 1 required.\n";
         return 1;
     }
+    // Azimuthal copy assumes on-axis; off-axis observers belong in true_2d_sgl_image.
     if (options.observer_distance != 0.0) {
         std::cerr << "Angular image formation (Fix A) requires on-axis observer "
                      "(observer-distance == 0).\n";
         return 1;
     }
 
+    // Geometry: lens origin rs=1, source (0,0,−S), observer D·Z (+ d·X, already 0).
     const double half_extent = 0.5 * options.extent;
     Geometry::Lens lens;
     lens.parameters = Spacetime::SchwarzschildParameters{.rs = 1.0};
@@ -655,6 +705,7 @@ int main(int argc, char** argv) {
 
     // Observer sits at axial distance D along +Z, then displaced perpendicular to the
     // focal line (optical axis) along +X by observer_distance.
+    // d is already required to be 0 here; the 2D executable allows a transverse offset.
     const Eigen::Vector3d observer_position =
         options.observer_axial_distance * Geometry::WorldFrame::optical_axis() +
         options.observer_distance * Geometry::WorldFrame::plane_u_axis();
@@ -664,6 +715,7 @@ int main(int argc, char** argv) {
         Geometry::ImagePlane::attached_to(observer, half_extent, half_extent);
     const Problem::PropagationProblem problem(lens, source, observer, image_plane);
 
+    // Kernel: capture at r = 1.0001 rs; reproject the null constraint every 1000 steps.
     Schwarzschild::PropagationOptions propagation_options;
     propagation_options.horizon_safety_factor = 1.0001;
     propagation_options.escape_radius = std::numeric_limits<double>::infinity();
@@ -678,6 +730,7 @@ int main(int argc, char** argv) {
     const Propagation::IntegrationSettings settings{.step_size = options.step_size,
                                                     .max_steps = options.max_steps};
 
+    // Sampling: 1D fan in b — not the image. Point shares the source event (b = L/E).
     Rays::RayEnsemble ensemble;
     if (options.ray_model == RayModel::Point) {
         const Rays::RaySampler sampler(Rays::RaySamplingConfig{
@@ -689,6 +742,7 @@ int main(int argc, char** argv) {
         ensemble = sample_parallel_rays(lens, options.source_distance, options.ray_count,
                                         options.b_min, options.b_max);
     }
+    // Arrivals: PlaneCrossingTermination + RK4 + localize. Crossing ≠ observer hit.
     const std::vector<Arrivals::RayArrival> arrivals = Arrivals::collect_arrivals(
         ensemble, problem, context.dynamics(), fallback, settings, integrator,
         context.correction());
@@ -707,6 +761,7 @@ int main(int argc, char** argv) {
             b, arrival, residual_u_for_arrival(problem.image_plane(), arrival)});
     }
 
+    // Root: residual_u(b) brackets → bisection → primary (min positive ρ).
     const std::vector<ObserverHitBracket> brackets =
         scan_observer_hit_brackets(scan_hits, options.observer_hit_tolerance);
     if (brackets.empty()) {
@@ -728,15 +783,18 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // Angular: rotate signed equatorial u_ang. Search geodesics are not binned.
     const std::vector<Eigen::Vector2d> angular_samples = Arrivals::expand_angular_azimuthally(
         selection.angular_coordinate.x(), options.azimuth_count);
 
+    // Image: +1 per azimuthal sample, then scale peak to 1. Scalar θ_E is in the summary.
     const Imaging::Image image = Imaging::ImageFormation::form_image(
         angular_samples, static_cast<std::size_t>(options.resolution),
         static_cast<std::size_t>(options.resolution), options.extent);
     const double raw_max = image.max_intensity();
     const Imaging::Image normalized = image.normalized_to_max();
 
+    // I/O: CSV (scientific, low-v first) and PGM (high-v first so +v is up).
     const std::filesystem::path output_dir(options.output_dir);
     std::filesystem::create_directories(output_dir);
 

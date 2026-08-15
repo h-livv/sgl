@@ -9,6 +9,13 @@
 #include <cmath>
 #include <vector>
 
+// Kernel regression: remaining Schwarzschild IC builders vs frozen Baseline.h.
+// Contract: bound-orbit, radial-freefall, and custom-null finals match snapshots;
+//           bound E/L drift < 1e-9 and the orbit stays in rs < r < 20.
+// Pipeline: kernel (sgl_physics). Complements null_scatter_regression.cpp.
+// Caveat: mixed geodesic kinds (timelike bound/radial + null custom); not the
+//         imaging path. Radial/custom terminate at the horizon safety radius.
+
 namespace {
 
 void check_state(const State& actual, const Baseline::Case& expected, double rel_tol, const char* label) {
@@ -30,6 +37,7 @@ int main() {
 
     {
         Schwarzschild::PropagationContext context(params, {});
+        // Default circular-ish bound orbit: must never cross the horizon.
         Schwarzschild::BoundOrbitInitialConditions initial;
         const State initial_state = Schwarzschild::build_bound_orbit(params, initial);
         Propagation::IntegrationSettings settings{.step_size = 0.01, .max_steps = 100000};
@@ -57,6 +65,7 @@ int main() {
         Schwarzschild::PropagationOptions options;
         options.horizon_safety_factor = 1.0001;
         Schwarzschild::PropagationContext context(params, options);
+        // Timelike radial plunge; Terminated when r hits rs * 1.0001.
         Schwarzschild::RadialFreefallInitialConditions initial;
         initial.r0 = 10.0;
         const State initial_state = Schwarzschild::build_radial_freefall(params, initial);
@@ -75,6 +84,7 @@ int main() {
         Schwarzschild::PropagationOptions options;
         options.horizon_safety_factor = 1.0001;
         Schwarzschild::PropagationContext context(params, options);
+        // vt = 0 is filled in by null normalization; inward vr with small vphi plunges.
         Schwarzschild::CustomInitialConditions initial;
         initial.r0 = 10.0;
         initial.vr = -1.0;

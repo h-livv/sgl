@@ -8,6 +8,14 @@
 #include <stdexcept>
 #include <vector>
 
+// Imaging: Image histogram and ImageFormation pixel mapping.
+// Contract: pixels start at 0; accumulate adds +1 (not flux); [u_min, u_max) ×
+//           [v_min, v_max) is half-open so u_max/v_max are out; covering_extent
+//           grows the window so a sample is not parked on the excluded max edge.
+// Pipeline: imaging. Experiments bin gnomonic (u_ang, v_ang) with this same code.
+// Caveat: form_image(extent) spans ±extent/2, so extent 0.8 is the window
+//         [-0.4, 0.4). A sample at |u| = 0.6608 is outside that window.
+
 namespace {
 
 void expect_invalid_image(std::size_t width, std::size_t height, double u_min, double u_max,
@@ -61,6 +69,7 @@ int main() {
     CHECK(origin_pixel->first == 0, "(u_min, v_min) x");
     CHECK(origin_pixel->second == 0, "(u_min, v_min) y");
 
+    // Half-open: the max edges belong to the next (nonexistent) pixel and are dropped.
     CHECK(!Imaging::ImageFormation::pixel_for(image, Eigen::Vector2d(2.0, 0.0)).has_value(),
           "u_max out of bounds");
     CHECK(!Imaging::ImageFormation::pixel_for(image, Eigen::Vector2d(0.0, 1.5)).has_value(),
@@ -143,6 +152,7 @@ int main() {
           "deterministic formation");
 
     const std::vector<Eigen::Vector2d> clipped = {Eigen::Vector2d(0.6608, 0.0)};
+    // extent is full width: 2*|u|*1.1 so the sample is strictly inside the half-open max.
     CHECK_CLOSE(Imaging::ImageFormation::covering_extent(clipped, 0.8), 2.0 * 0.6608 * 1.1, 1e-15,
                 "covering_extent expands past half-open bound");
     CHECK_CLOSE(Imaging::ImageFormation::covering_extent({Eigen::Vector2d(0.2, 0.0)}, 0.8), 0.8,

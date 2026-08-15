@@ -5,8 +5,15 @@
 #include <Eigen/Dense>
 #include <cmath>
 
+// Kernel: Schwarzschild::project_onto_null_cone (optional StepCorrection).
+// Contract: |H| drops to ~0; coordinates and spatial U are unchanged; a second
+//           call leaves U^t bit-stable (idempotent).
+// Pipeline: kernel. Imaging runs may invoke this every N integrator steps.
+// Caveat: only U^t is adjusted; the test state is deliberately off-cone.
+
 int main() {
     constexpr double rs = 1.0;
+    // Equatorial event with a 4-velocity that is not null-normalized.
     State state(Eigen::Vector4d(0.0, 10.0, 1.5707963267948966, 0.0),
                 Eigen::Vector4d(10.0, -0.3, 0.0, 0.02));
 

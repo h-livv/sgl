@@ -4,11 +4,18 @@
 
 namespace Propagation {
 
+// Why the integrator stopped. Terminated: should_terminate was true at the
+// start of an iteration (including before any step). StepBudgetExhausted:
+// max_steps were taken without that check succeeding. The last budgeted step
+// is not re-tested, so a bound crossed on that step still reports Exhausted.
 enum class PropagationStatus {
     Terminated,
     StepBudgetExhausted,
 };
 
+// Endpoint of a geodesic integration. The imaging path calls propagate() and
+// keeps only these two states — the full trajectory is not stored. Arrivals
+// interpolates between previous_state and final_state to locate a plane hit.
 struct PropagationOutcome {
     State final_state{};
     int steps_taken = 0;

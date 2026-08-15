@@ -1,5 +1,8 @@
 #pragma once
 
+// Tiny assertion helpers for standalone test mains (not GoogleTest).
+// CHECK / CHECK_CLOSE increment g_failures; report() prints "OK" or returns 1.
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -16,6 +19,7 @@ inline void check(bool condition, const char* file, int line, const char* messag
     ++g_failures;
 }
 
+// |a−e| ≤ rel_tol · max(1, |e|, |a|) so values near zero are not over-strict.
 inline bool close_rel(double actual, double expected, double rel_tol) {
     const double scale = std::max({1.0, std::abs(expected), std::abs(actual)});
     return std::abs(actual - expected) <= rel_tol * scale;

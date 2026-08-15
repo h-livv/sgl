@@ -14,6 +14,15 @@
 #include <stdexcept>
 #include <vector>
 
+// Arrivals: expand_azimuthally — rotate spatial plane-u, not gnomonic u_ang.
+// Contract: (u,0) → (u cos ψ, u sin ψ); NoCrossing dropped; |u| is the radius
+//           (negative u kept at k = 0); residual v discarded; u = 0 emits one
+//           origin point; bit-exact reruns.
+// Pipeline: arrivals. The 1D imaging experiments use expand_angular_azimuthally
+//           instead (observer_angular_coordinates.cpp / angular pipelines).
+// Caveat: this is a spatial image-plane fill. Do not treat it as the Einstein-ring
+//         picture path.
+
 namespace {
 
 Arrivals::RayArrival make_arrived(const Geometry::ImagePlane& plane, std::size_t ray_id,
@@ -66,6 +75,7 @@ int main() {
     expect_invalid_azimuth_count({}, plane, 0);
     expect_invalid_azimuth_count({}, plane, -1);
 
+    // Arbitrary in-plane radius; the formula is (u cos ψ, u sin ψ), independent of this value.
     const double u = 5.393;
     const std::vector<Arrivals::RayArrival> single_arrival{make_arrived(plane, 0, u)};
     const std::vector<Arrivals::PlaneArrival> identity =
@@ -155,6 +165,7 @@ int main() {
                     "negative radius group");
     }
 
+    // Signed u: k = 0 stays on the negative-u axis; the circle radius is |u|.
     const std::vector<Arrivals::RayArrival> negative_u{make_arrived(plane, 0, -2.316)};
     const std::vector<Arrivals::PlaneArrival> negative_expanded =
         Arrivals::expand_azimuthally(negative_u, plane, 8);
@@ -163,6 +174,7 @@ int main() {
         CHECK_CLOSE(entry.plane_position.norm(), 2.316, 1e-12, "negative u radius preserved");
     }
 
+    // Degenerate ring: one origin sample, not azimuth_count copies of (0,0).
     const std::vector<Arrivals::RayArrival> zero_radius{make_arrived(plane, 0, 0.0)};
     const std::vector<Arrivals::PlaneArrival> zero_expanded =
         Arrivals::expand_azimuthally(zero_radius, plane, 16);
@@ -170,6 +182,7 @@ int main() {
     CHECK(plane_coords_close(zero_expanded[0].plane_position, Eigen::Vector2d::Zero(), 1e-15),
           "zero radius position");
 
+    // Tiny v is ignored: expansion uses signed u only (equatorial 1D residue).
     Arrivals::RayArrival residual_v = make_arrived(plane, 0, u);
     residual_v.world_position = plane.to_world(Eigen::Vector2d(u, 1e-15));
     const std::vector<Arrivals::PlaneArrival> residue_expanded =

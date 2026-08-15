@@ -13,6 +13,8 @@ RayOutcomes propagate_ensemble(const RayEnsemble& ensemble,
     const std::size_t n = ensemble.size();
     RayOutcomes outcomes(n);
 #if defined(_OPENMP)
+    // Independent geodesics; dynamic schedule because step counts vary. Inner
+    // propagate() is serial — no nested parallelism.
 #pragma omp parallel for schedule(dynamic) if (n > 1)
 #endif
     for (std::size_t i = 0; i < n; ++i) {

@@ -38,12 +38,15 @@ PropagationProblem::PropagationProblem(const Geometry::Lens& lens,
             "PropagationProblem: observer must be outside the lens horizon");
     }
 
+    // Light travels +Z into a plane whose normal is +Z; the camera looks −Z, so
+    // normal · forward must be −1. attached_to satisfies this by construction.
     const double normal_dot_forward = image_plane_.normal().dot(observer_.forward());
     if (std::abs(normal_dot_forward + 1.0) > Geometry::kOrthonormalityTolerance) {
         throw std::invalid_argument(
             "PropagationProblem: image plane normal must be antiparallel to observer forward");
     }
 
+    // Allow a shift of the plane along the view axis; reject a perpendicular offset.
     const Eigen::Vector3d origin_offset = image_plane_.origin() - observer_.position();
     const Eigen::Vector3d perp =
         origin_offset - origin_offset.dot(observer_.forward()) * observer_.forward();
@@ -62,6 +65,7 @@ double PropagationProblem::observer_distance() const {
     return (observer_.position() - lens_.position).norm();
 }
 
+// On-axis only: observer at +D Z, looking at the origin. No transverse d.
 PropagationProblem make_aligned_problem(const Spacetime::SchwarzschildParameters& parameters,
                                         double source_distance, double observer_distance,
                                         double half_width, double half_height) {

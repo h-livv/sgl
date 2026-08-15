@@ -41,6 +41,7 @@ ImagePlane::ImagePlane(const Eigen::Vector3d& origin, const Eigen::Vector3d& u,
 
 ImagePlane ImagePlane::attached_to(const Observer& observer, double half_width,
                                    double half_height) {
+    // u = forward × up, v = up → normal = u × v along −forward (aligned: +Z).
     return ImagePlane(observer.position(), observer.right(), observer.up(), half_width,
                       half_height);
 }

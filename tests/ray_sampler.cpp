@@ -7,6 +7,13 @@
 #include <limits>
 #include <stdexcept>
 
+// Rays: 1D RaySampler (equatorial impact-parameter sweep).
+// Contract: ray_count states, id == index, linearly spaced b in (b_min, b_max],
+//           shared start event at the source, L = b, U^θ = 0, inward U^r.
+// Pipeline: rays, 1D imaging path. True 2D uses RayGrid2DSampler instead.
+// Caveat: b_min must be > 0 and strictly less than b_max. Here b > b_crit so
+//         later observer-plane tests see escaping photons.
+
 namespace {
 
 bool equal_state_bits(const State& a, const State& b) {
@@ -30,6 +37,7 @@ int main() {
         Problem::make_aligned_problem(params, 30.0, 30.0, 5.0, 5.0);
 
     const double b_crit = Physics::Observables::critical_impact_parameter(params.rs);
+    // Slightly above b_crit: scatter/escape, not capture. All rays share (t,r,θ,φ).
     const Rays::RaySamplingConfig config{.ray_count = 5,
                                          .min_impact_parameter = b_crit + 0.1,
                                          .max_impact_parameter = b_crit + 2.0};

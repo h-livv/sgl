@@ -4,6 +4,7 @@ namespace Integration {
 namespace {
 
 State rk4_step(const State& state, double dt, const DerivativeFunc& derivative) {
+    // k1..k4 are full States (X and U); classic RK4, metric-agnostic.
     const State k1 = derivative(state);
     const State k2 = derivative(state + k1 * (dt / 2.0));
     const State k3 = derivative(state + k2 * (dt / 2.0));

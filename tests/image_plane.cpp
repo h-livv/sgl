@@ -5,6 +5,14 @@
 
 #include <limits>
 
+// Geometry: ImagePlane attached to an Observer.
+// Contract: origin is the observer; (u, v, normal) orthonormal with
+//           normal = u × v = −forward; signed_distance / to_plane_coordinates
+//           round-trip; contains() includes the closed rectangle.
+// Pipeline: geometry. Arrivals interpolate onto this plane.
+// Caveat: this is the observer's residual plane, not a focal screen in front
+//         of the camera. Lens-side points have negative signed distance.
+
 namespace {
 
 bool vectors_close(const Eigen::Vector3d& actual, const Eigen::Vector3d& expected,
@@ -88,6 +96,7 @@ int main() {
     CHECK(!plane.contains(Eigen::Vector2d(0.0, plane.half_height() * 1.1)),
           "outside height rejected");
 
+    // Off-axis: residual (0,0) is the displaced observer, not the optical-axis foot.
     const Geometry::Observer off_axis_observer = Geometry::Observer::looking_at(
         Eigen::Vector3d(1.0, 0.0, 30.0), Eigen::Vector3d::Zero(), Eigen::Vector3d(0, 1, 0));
     const Geometry::ImagePlane off_plane =

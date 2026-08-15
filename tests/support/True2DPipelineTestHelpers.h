@@ -1,5 +1,10 @@
 #pragma once
 
+// Test-side copy of the 2D launch-plane + Newton pipeline in
+// experiments/true_2d_sgl_image.cpp. Not the production API.
+// collect_observer_angular_samples is the 2D test entry. Unlike the 1D helpers,
+// make_problem allows a transverse observer offset (CLI --observer-distance d).
+
 #include <arrivals/ArrivalCollector.h>
 #include <arrivals/ObserverAngularCoordinates.h>
 #include <geometry/ImagePlane.h>
@@ -21,6 +26,7 @@
 
 namespace True2DTest {
 
+// One Gauss-Newton hit that reached the observer (launch b_u,b_v + gnomonic).
 struct AcceptedAngularSample {
     Arrivals::RayArrival arrival;
     Eigen::Vector2d angular_coordinate = Eigen::Vector2d::Zero();
@@ -38,6 +44,8 @@ struct True2DPipelineResult {
     std::size_t seed_count = 0;
 };
 
+// Lens at origin (rs=1), source at −S Z, observer at D·Z + d·X looking at the
+// origin, plane attached. observer_transverse_u is CLI d, not |observer−lens|.
 inline Problem::PropagationProblem make_problem(double source_distance, double observer_axial_distance,
                                                 double observer_transverse_u, double half_extent) {
     Geometry::Lens lens;
@@ -65,6 +73,9 @@ inline double plane_residual_norm(const Geometry::ImagePlane& plane,
     return plane.to_plane_coordinates(arrival.world_position).norm();
 }
 
+// 2D test entry: RayGrid2DSampler search grid → collect_arrivals →
+// observer_hit_seeds + refine_observer_launches. Search geodesics are not
+// binned; accepted[] holds Newton hits. Does not form an image.
 inline True2DPipelineResult collect_observer_angular_samples(
     const Problem::PropagationProblem& problem, const Rays::RayGrid2DSamplingConfig& sampling_config,
     const Arrivals::ObserverLaunchRefinementConfig& refinement,
@@ -103,6 +114,7 @@ inline True2DPipelineResult collect_observer_angular_samples(
     return result;
 }
 
+// Analysis of refined observer gnomonic samples (not the search grid).
 inline double median_radius(const std::vector<Eigen::Vector2d>& coordinates) {
     if (coordinates.empty()) {
         return std::numeric_limits<double>::quiet_NaN();
@@ -120,10 +132,12 @@ inline double median_radius(const std::vector<Eigen::Vector2d>& coordinates) {
     return 0.5 * (radii[mid - 1] + radii[mid]);
 }
 
+// Alias of median_radius — ring size used by 2D tests.
 inline double characteristic_radius(const std::vector<Eigen::Vector2d>& coordinates) {
     return median_radius(coordinates);
 }
 
+// Population stddev of ρ = ||(u_ang, v_ang)||.
 inline double radial_stddev(const std::vector<Eigen::Vector2d>& coordinates) {
     if (coordinates.empty()) {
         return std::numeric_limits<double>::quiet_NaN();
@@ -144,6 +158,7 @@ inline double radial_stddev(const std::vector<Eigen::Vector2d>& coordinates) {
     return std::sqrt(variance);
 }
 
+// Mean of refined gnomonic samples.
 inline Eigen::Vector2d centroid(const std::vector<Eigen::Vector2d>& coordinates) {
     if (coordinates.empty()) {
         return Eigen::Vector2d::Zero();
@@ -155,6 +170,8 @@ inline Eigen::Vector2d centroid(const std::vector<Eigen::Vector2d>& coordinates)
     return sum / static_cast<double>(coordinates.size());
 }
 
+// (λ_max − λ_min) / (λ_max + λ_min) of the 2×2 covariance of the samples.
+// 0 is circular; approaching 1 is a line. Population (÷ n) moments.
 inline double second_moment_anisotropy(const std::vector<Eigen::Vector2d>& coordinates) {
     if (coordinates.size() < 2) {
         return 0.0;

@@ -28,6 +28,7 @@ void RayEnsemble::set_initial_state(std::size_t index, const State& initial_stat
     if (index >= rays_.size()) {
         throw std::out_of_range("RayEnsemble: ray index out of range");
     }
+    // Keep id == index; only the launch State changes (Newton refinement).
     rays_[index].initial_state = initial_state;
 }
 

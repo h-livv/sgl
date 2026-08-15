@@ -23,6 +23,8 @@ RayArrival localize_arrival(std::size_t ray_id, const Geometry::Lens& lens,
     const Eigen::Vector3d p_prev = world_position(lens, outcome.previous_state);
     const double d_prev = plane.signed_distance(p_prev);
 
+    // Linear zero of signed_distance along the last segment. Equal distances
+    // leave t = 0 (previous sample). Not a geodesic root finder.
     double t = 0.0;
     if (d_prev != d_curr) {
         t = d_prev / (d_prev - d_curr);
@@ -30,6 +32,7 @@ RayArrival localize_arrival(std::size_t ray_id, const Geometry::Lens& lens,
     }
 
     arrival.world_position = p_prev + t * (p_curr - p_prev);
+    // Same t on spherical X and U; first-order, not a geodesic interpolation.
     arrival.chart_state =
         State(outcome.previous_state.X + t * (outcome.final_state.X - outcome.previous_state.X),
               outcome.previous_state.U + t * (outcome.final_state.U - outcome.previous_state.U));
@@ -52,7 +55,7 @@ std::vector<RayArrival> collect_arrivals(const Rays::RayEnsemble& ensemble,
 
     std::vector<RayArrival> arrivals;
     arrivals.reserve(outcomes.size());
-    for (std::size_t i = 0; i < outcomes.size(); ++i) {
+    for (std::size_t i = 0; i < outcomes.size(); ++i) {  // index-aligned with ensemble
         arrivals.push_back(localize_arrival(ensemble.at(i).id, problem.lens(),
                                           problem.image_plane(), outcomes[i]));
     }

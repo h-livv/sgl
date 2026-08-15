@@ -8,6 +8,13 @@
 
 #include <cstddef>
 
+// Rays: EnsemblePropagator vs the single-ray kernel.
+// Contract: one-ray ensemble is bitwise equal to propagate(); outcome i belongs
+//           to ray id i; repeated / fresh-context runs match; mutating ray 2
+//           changes only outcome 2; empty ensemble yields no outcomes.
+// Pipeline: rays. Does not cover OpenMP (see ensemble_parallel_invariance.cpp).
+// Caveat: sampled b > b_crit so every ray hits the escape radius.
+
 namespace {
 
 bool equal_state_bits(const State& a, const State& b) {

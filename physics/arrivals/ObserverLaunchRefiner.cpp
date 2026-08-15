@@ -28,6 +28,7 @@ Eigen::Vector2d plane_residual(const Geometry::ImagePlane& plane, const RayArriv
 
 int grid_index(int i, int j, int n) { return j * n + i; }
 
+// (J^T J + lambda I) delta = -J^T r; tiny lambda so a rank-deficient FD J still solves.
 Eigen::Vector2d solve_gauss_newton(const Eigen::Matrix2d& jacobian, const Eigen::Vector2d& residual) {
     const Eigen::Matrix2d jtj = jacobian.transpose() * jacobian;
     const double lambda = 1e-12 * (1.0 + jtj.trace());
@@ -53,6 +54,7 @@ LaunchHit evaluate_launch(const Problem::PropagationProblem& problem,
     hit.b_u = b_u;
     hit.b_v = b_v;
 
+    // One-ray ensemble: residual of this launch, not a grid search.
     Rays::RayEnsemble ensemble;
     ensemble.add(sampler.state_for(problem, b_u, b_v));
     const std::vector<RayArrival> arrivals = collect_arrivals(
@@ -95,6 +97,7 @@ std::vector<Eigen::Vector2d> observer_hit_seeds(const std::vector<Rays::RayGrid2
         seeds.push_back(candidate);
     };
 
+    // Always keep the globally closest miss so Newton has at least one seed.
     int best_index = -1;
     double best_norm = std::numeric_limits<double>::infinity();
     for (std::size_t k = 0; k < samples.size(); ++k) {
@@ -108,6 +111,7 @@ std::vector<Eigen::Vector2d> observer_hit_seeds(const std::vector<Rays::RayGrid2
                  samples[static_cast<std::size_t>(best_index)].b_v);
     }
 
+    // 8-neighbour local minima of |residual| (plateaus count as minima).
     for (int j = 0; j < samples_per_axis; ++j) {
         for (int i = 0; i < samples_per_axis; ++i) {
             const int k = grid_index(i, j, samples_per_axis);
@@ -161,6 +165,8 @@ std::vector<Eigen::Vector2d> observer_hit_seeds(const std::vector<Rays::RayGrid2
                  (1.0 - t) * samples[a].b_v + t * samples[b].b_v);
     };
 
+    // Adjacent cells whose residual segment passes closer to the origin than
+    // either endpoint: interpolate that t onto (b_u, b_v). Not an aperture.
     for (int j = 0; j < samples_per_axis; ++j) {
         for (int i = 0; i + 1 < samples_per_axis; ++i) {
             maybe_edge_seed(static_cast<std::size_t>(grid_index(i, j, samples_per_axis)),
@@ -218,6 +224,7 @@ refine_launch_to_observer(const Problem::PropagationProblem& problem,
         }
 
         if (!have_jacobian) {
+            // Forward-difference dF/db; failed FD (NaN residual) aborts the seed.
             const LaunchHit plus_u = evaluate_launch(
                 problem, sampler, clamp_b(current.b_u + config.finite_difference_step), current.b_v,
                 context, fallback, settings, integrator);
@@ -236,7 +243,7 @@ refine_launch_to_observer(const Problem::PropagationProblem& problem,
 
         Eigen::Vector2d step = solve_gauss_newton(jacobian, current.plane_residual);
         bool accepted = false;
-        for (int attempt = 0; attempt < 6; ++attempt) {
+        for (int attempt = 0; attempt < 6; ++attempt) {  // halve step until residual drops
             const double next_u = clamp_b(current.b_u + step.x());
             const double next_v = clamp_b(current.b_v + step.y());
             if (next_u == current.b_u && next_v == current.b_v) {
@@ -255,14 +262,14 @@ refine_launch_to_observer(const Problem::PropagationProblem& problem,
             const double db2 = db.squaredNorm();
             if (db2 > kResidualEps) {
                 const Eigen::Vector2d dR = trial.plane_residual - current.plane_residual;
-                jacobian += (dR - jacobian * db) * db.transpose() / db2;
+                jacobian += (dR - jacobian * db) * db.transpose() / db2;  // Broyden
             }
             current = trial;
             accepted = true;
             break;
         }
         if (!accepted) {
-            have_jacobian = false;
+            have_jacobian = false;  // re-FD next iteration; do not keep a stale J
         }
     }
 
@@ -283,6 +290,7 @@ refine_observer_launches(const Problem::PropagationProblem& problem,
         sampler.config().samples_per_axis);
 
     std::vector<std::optional<RefinedObserverHit>> per_seed(seeds.size());
+    // OpenMP over seeds; each seed's 1-ray Newton steps stay serial (n == 1).
 #if defined(_OPENMP)
 #pragma omp parallel for schedule(dynamic) if (seeds.size() > 1)
 #endif
@@ -303,6 +311,7 @@ refine_observer_launches(const Problem::PropagationProblem& problem,
     const double cell_width =
         (2.0 * sampler.config().max_impact_parameter) /
         static_cast<double>(sampler.config().samples_per_axis);
+    // Keep the tighter residual if two refined launches lie within 0.25 cell.
     const double duplicate2 = 0.25 * cell_width * 0.25 * cell_width;
 
     std::sort(refined.begin(), refined.end(), [](const RefinedObserverHit& a,

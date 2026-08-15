@@ -6,6 +6,14 @@
 #include <cmath>
 #include <limits>
 
+// Geometry: WorldFrame chart permutation and Observer orthonormal frames.
+// Contract: world (X,Y,Z) → chart (Z,X,Y) is a rotation (det +1); aligned
+//           world X-Z points sit on the chart equator (θ = π/2); looking_at
+//           builds a right-handed (right, up, -forward) camera triple.
+// Pipeline: geometry (sgl_geometry), before rays/arrivals.
+// Caveat: the permutation is not a Lorentz transform. It exists so the
+//         optical axis is chart-x and canonical rays avoid the polar singularity.
+
 namespace {
 
 bool vectors_close(const Eigen::Vector3d& actual, const Eigen::Vector3d& expected,
@@ -63,6 +71,7 @@ int main() {
     CHECK(matrix_close(rotation * rotation.transpose(), identity, 1e-15), "rotation orthogonal");
     CHECK_CLOSE(rotation.determinant(), 1.0, 1e-12, "rotation determinant");
 
+    // Optical axis +Z becomes chart +X (Schwarzschild radial in the aligned problem).
     CHECK(vectors_close(Geometry::WorldFrame::world_to_chart(Eigen::Vector3d(0, 0, 1)),
                         Eigen::Vector3d(1, 0, 0), 1e-15),
           "world +Z to chart");
@@ -85,6 +94,7 @@ int main() {
 
     const double D = 50.0;
     const double S = 100.0;
+    // World X-Z (the aligned source–lens–observer plane) must map to θ = π/2.
     const Eigen::Vector3d equatorial_points[] = {
         Eigen::Vector3d(0, 0, D),
         Eigen::Vector3d(0, 0, -S),

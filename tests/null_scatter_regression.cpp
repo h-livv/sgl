@@ -9,6 +9,12 @@
 #include <cmath>
 #include <vector>
 
+// Kernel regression: Schwarzschild null-scatter IC + RK4 vs frozen Baseline.h.
+// Contract: 50k-step final (X,U) matches the snapshot at 1e-12; E and L drift
+//           below 1e-12; null Hamiltonian error stays below 1e-10.
+// Pipeline: kernel (sgl_physics). No observer geometry, rays, or imaging.
+// Caveat: expected status is StepBudgetExhausted, not plane-crossing termination.
+
 namespace {
 
 void check_state(const State& actual, const Baseline::Case& expected, double rel_tol) {
@@ -34,6 +40,8 @@ int main() {
 
     Schwarzschild::NullScatterInitialConditions initial;
     initial.r0 = 30.0;
+    // Just outside the photon sphere (b_crit = 3√3/2 rs) so the ray scatters
+    // strongly instead of capturing; rs = 1 in geometrized units.
     initial.impact_parameter = Physics::Observables::critical_impact_parameter(params.rs) + 0.5;
     State initial_state = Schwarzschild::build_null_scatter(params, initial);
 

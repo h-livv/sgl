@@ -6,8 +6,13 @@ namespace Geometry {
 
 inline constexpr double kOrthonormalityTolerance = 1e-12;
 
+// Shared SGL world/chart convention used by Lens, Observer, ImagePlane,
+// RaySampler, RayGrid2DSampler, and ChartMapping. Geometry-only: no geodesic types.
+//
 // World frame: right-handed Cartesian (X, Y, Z) with X x Y = Z.
-// Optical axis = +Z. Lens at origin, observer at (0, 0, +D), source at (0, 0, -S).
+// Optical axis = +Z. Lens at origin, source at (0, 0, -S).
+// Aligned observer at (0, 0, +D); off-axis observer at D·Z + d·X
+// (d = 0 Einstein ring; d ≠ 0 arcs). Axes do not change with d.
 // Observer looks toward -Z; image-plane basis (u, v, normal) is right-handed with
 // normal = u x v = +Z (along incoming light). Camera triple (right, up, -forward) is
 // right-handed.
@@ -28,6 +33,7 @@ inline Eigen::Vector3d optical_axis() { return Eigen::Vector3d::UnitZ(); }
 inline Eigen::Vector3d plane_u_axis() { return Eigen::Vector3d::UnitX(); }
 inline Eigen::Vector3d plane_v_axis() { return Eigen::Vector3d::UnitY(); }
 
+// Axis permutation (x_c, y_c, z_c) = (Z, X, Y); not a Lorentz transform.
 inline Eigen::Matrix3d world_to_chart_rotation() {
     Eigen::Matrix3d r;
     r << 0.0, 0.0, 1.0,

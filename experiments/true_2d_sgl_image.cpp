@@ -1,3 +1,18 @@
+// 2D launch-plane search + Gauss-Newton refine experiment (sgl_true_2d_sgl_image).
+//
+// Same geometry as the 1D executable, but CLI --observer-distance (transverse d
+// along +X) IS allowed. --observer-axial-distance is D along +Z. Distinct from
+// PropagationProblem::observer_distance() (|observer−lens|).
+//
+// Data flow: ALWAYS a parallel RayGrid2DSampler search grid (not the image;
+// those geodesics are never binned) → collect_arrivals → observer_hit_seeds +
+// refine_observer_launches (damped Gauss-Newton on plane residual) → observer
+// gnomonic coords of refined hits → fill_aligned_observer_ring (on-axis: median
+// ρ then azimuthal copy; off-axis: refined hits only) → covering_extent may
+// enlarge the window → form_image → CSV/PGM/hits CSV/summary.
+//
+// Kernel knobs: horizon_safety_factor 1.0001, null projection every 1000 steps.
+
 #include <arrivals/ArrivalCollector.h>
 #include <arrivals/ObserverAngularCoordinates.h>
 #include <arrivals/ObserverLaunchRefiner.h>
@@ -30,18 +45,18 @@ namespace {
 
 struct CliOptions {
     std::string output_dir = "outputs/sgl_true_2d";
-    int samples_per_axis = 5;
+    int samples_per_axis = 5;  // launch-plane search grid (not image pixels)
     int resolution = 64;
-    double extent = 0.8;
-    double b_max = 20.0;
+    double extent = 0.8;       // requested imaging window; covering_extent may grow it
+    double b_max = 20.0;       // launch-plane half-width
     double step_size = 0.01;
     int max_steps = 300000;
-    double source_distance = 30.0;
-    double observer_axial_distance = 30.0;
-    double observer_distance = 0.0;
-    double observer_hit_tolerance = 1e-6;
-    int max_root_iterations = 12;
-    int azimuth_count = 720;
+    double source_distance = 30.0;           // S along −Z
+    double observer_axial_distance = 30.0;   // D along +Z; not |observer−lens|
+    double observer_distance = 0.0;          // transverse d along +X; allowed nonzero
+    double observer_hit_tolerance = 1e-6;    // |plane residual| after Newton
+    int max_root_iterations = 12;            // Gauss-Newton cap per seed (not 1D bisection)
+    int azimuth_count = 720;                 // on-axis ring fill; unused off-axis
 };
 
 void print_usage(std::ostream& out) {
@@ -190,6 +205,7 @@ bool parse_args(int argc, char** argv, CliOptions& options) {
     return true;
 }
 
+// Scientific dump of normalized counts, row-major, low-v first (not flipped).
 void write_csv(const std::filesystem::path& path, const Imaging::Image& image) {
     std::ofstream out(path);
     if (!out) {
@@ -216,6 +232,7 @@ void write_csv(const std::filesystem::path& path, const Imaging::Image& image) {
     }
 }
 
+// Visualization. Rows written high-v to low-v so +v is visually up.
 void write_pgm(const std::filesystem::path& path, const Imaging::Image& image) {
     std::ofstream out(path);
     if (!out) {
@@ -237,6 +254,7 @@ void write_pgm(const std::filesystem::path& path, const Imaging::Image& image) {
     }
 }
 
+// Refined Newton hits (launch b_u,b_v + observer gnomonic), not the search grid.
 void write_hits(const std::filesystem::path& path, const Geometry::Observer& observer,
                 const Geometry::ImagePlane& plane,
                 const std::vector<Arrivals::RefinedObserverHit>& hits) {
@@ -260,6 +278,7 @@ void write_hits(const std::filesystem::path& path, const Geometry::Observer& obs
     }
 }
 
+// Run metadata. Median ρ / radial stddev are of refined angular samples, not pixels.
 void write_summary(const std::filesystem::path& path, const CliOptions& options,
                    const Geometry::Observer& observer, std::size_t rays_sampled,
                    std::size_t raw_arrivals, std::size_t arrived_count, std::size_t seed_count,
@@ -307,6 +326,7 @@ void write_summary(const std::filesystem::path& path, const CliOptions& options,
     out << "hits_path=" << hits_path.string() << '\n';
 }
 
+// Median / population stddev of ||(u_ang, v_ang)|| over refined hits (not the search grid).
 double median_radius(const std::vector<Eigen::Vector2d>& coordinates) {
     if (coordinates.empty()) {
         return std::numeric_limits<double>::quiet_NaN();
@@ -347,6 +367,8 @@ double radial_stddev(const std::vector<Eigen::Vector2d>& coordinates) {
 } // namespace
 
 int main(int argc, char** argv) {
+    // Stages: parse/validate → geometry (d may be nonzero) → kernel → 2D search
+    // grid → collect_arrivals → Gauss-Newton refine → angular fill → image → I/O.
     CliOptions options;
     if (!parse_args(argc, argv, options)) {
         return 1;
@@ -361,6 +383,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // Geometry: lens origin rs=1, source (0,0,−S), observer D·Z + d·X (d allowed).
     const double half_extent = 0.5 * options.extent;
     Geometry::Lens lens;
     lens.parameters = Spacetime::SchwarzschildParameters{.rs = 1.0};
@@ -368,6 +391,7 @@ int main(int argc, char** argv) {
     Geometry::Source source;
     source.position = -options.source_distance * Geometry::WorldFrame::optical_axis();
 
+    // CLI --observer-distance is d along +X; --observer-axial-distance is D along +Z.
     const Eigen::Vector3d observer_position =
         options.observer_axial_distance * Geometry::WorldFrame::optical_axis() +
         options.observer_distance * Geometry::WorldFrame::plane_u_axis();
@@ -377,6 +401,7 @@ int main(int argc, char** argv) {
         Geometry::ImagePlane::attached_to(observer, half_extent, half_extent);
     const Problem::PropagationProblem problem(lens, source, observer, image_plane);
 
+    // Kernel: capture at r = 1.0001 rs; reproject the null constraint every 1000 steps.
     Schwarzschild::PropagationOptions propagation_options;
     propagation_options.horizon_safety_factor = 1.0001;
     propagation_options.escape_radius = std::numeric_limits<double>::infinity();
@@ -391,10 +416,12 @@ int main(int argc, char** argv) {
     const Propagation::IntegrationSettings settings{.step_size = options.step_size,
                                                     .max_steps = options.max_steps};
 
+    // Sampling: parallel RayGrid2DSampler search grid — never binned into the image.
     Rays::RayGrid2DSampler sampler(Rays::RayGrid2DSamplingConfig{
         .samples_per_axis = options.samples_per_axis,
         .max_impact_parameter = options.b_max});
     const Rays::RayEnsemble ensemble = sampler.sample(problem);
+    // Arrivals: PlaneCrossingTermination + RK4 + localize. Crossing ≠ observer hit.
     const std::vector<Arrivals::RayArrival> arrivals = Arrivals::collect_arrivals(
         ensemble, problem, context.dynamics(), fallback, settings, integrator,
         context.correction());
@@ -406,6 +433,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    // Newton: seeds from the search grid, then damped Gauss-Newton on plane residual.
     const Arrivals::ObserverLaunchRefinementConfig refinement{
         .hit_tolerance = options.observer_hit_tolerance,
         .max_iterations = options.max_root_iterations};
@@ -415,6 +443,7 @@ int main(int argc, char** argv) {
     const std::vector<Arrivals::RefinedObserverHit> refined = Arrivals::refine_observer_launches(
         problem, sampler, arrivals, refinement, context, fallback, settings, integrator);
 
+    // Refined hits already carry observer gnomonic (u_ang, v_ang).
     std::vector<Eigen::Vector2d> angular_coordinates;
     angular_coordinates.reserve(refined.size());
     double max_refined_residual = 0.0;
@@ -428,9 +457,11 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // Angular: on-axis median ρ + azimuthal copy; off-axis refined hits only.
     const std::vector<Eigen::Vector2d> image_samples = Arrivals::fill_aligned_observer_ring(
         angular_coordinates, options.observer_distance, options.azimuth_count);
 
+    // covering_extent may enlarge the window so hits on/beyond the max boundary are kept.
     const double image_extent =
         Imaging::ImageFormation::covering_extent(image_samples, options.extent);
     if (image_extent > options.extent) {
@@ -439,12 +470,14 @@ int main(int argc, char** argv) {
                   << " so they are not discarded.\n";
     }
 
+    // Image: +1 per filled sample (not the search geodesics), then scale peak to 1.
     const Imaging::Image image = Imaging::ImageFormation::form_image(
         image_samples, static_cast<std::size_t>(options.resolution),
         static_cast<std::size_t>(options.resolution), image_extent);
     const double raw_max = image.max_intensity();
     const Imaging::Image normalized = image.normalized_to_max();
 
+    // I/O: CSV (scientific, low-v first), PGM (high-v first so +v is up), hits CSV.
     const std::filesystem::path output_dir(options.output_dir);
     std::filesystem::create_directories(output_dir);
 

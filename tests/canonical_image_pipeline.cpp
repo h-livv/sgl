@@ -12,6 +12,14 @@
 #include <limits>
 #include <vector>
 
+// Experiment-level: canonical 1D imaging path (mirrors sgl_canonical_sgl_image).
+// Contract: observer-hit residual within 1e-6; azimuthal gnomonic ring in all
+//           quadrants; hollow center; r_max/r_min < 1.25; form_image is bitwise
+//           deterministic.
+// Pipeline: kernel + geometry + rays + arrivals + imaging at S = D = 30, rs = 1.
+// Caveat: ray_count = 9 is coarser than angular_image_pipeline.cpp (41 rays);
+//         still required to find a primary hit.
+
 namespace {
 
 bool images_equal(const Imaging::Image& a, const Imaging::Image& b) {
@@ -98,6 +106,7 @@ int main() {
     constexpr double observer_hit_tolerance = 1e-6;
     constexpr int max_root_iterations = 60;
 
+    // Canonical toy geometry: rs = 1, source and observer both 30 rs from the lens.
     const Problem::PropagationProblem problem = Problem::make_aligned_problem(
         Spacetime::SchwarzschildParameters{.rs = 1.0}, 30.0, 30.0, angular_extent / 2.0,
         angular_extent / 2.0);

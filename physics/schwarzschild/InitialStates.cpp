@@ -14,6 +14,8 @@ State build_bound_orbit(const Spacetime::SchwarzschildParameters& parameters,
         throw std::runtime_error("BoundOrbit: r0 must be greater than the Schwarzschild radius");
     }
     const double sin_theta = std::sin(initial.theta0);
+    // Timelike g(U,U) = −1 → U^t = sqrt((1 + spatial)/f). Clamps the radicand
+    // at 0 rather than throwing if the spatial velocity is superluminal.
     const double inner =
         (1.0 + r0 * r0 * initial.vtheta * initial.vtheta +
          r0 * r0 * sin_theta * sin_theta * initial.vphi * initial.vphi + (initial.vr * initial.vr) / f) /
@@ -31,6 +33,7 @@ State build_radial_freefall(const Spacetime::SchwarzschildParameters& parameters
     if (f <= 0.0) {
         throw std::runtime_error("RadialFreefall: r0 must be greater than the Schwarzschild radius");
     }
+    // Rest-at-infinity rain: E = 1 ⇒ U^t = 1/f, U^r = −sqrt(rs/r), L = 0.
     const double vt = 1.0 / f;
     const double vr = -std::sqrt(rs / r0);
     return State(Eigen::Vector4d(initial.t0, r0, initial.theta0, initial.phi0),
@@ -54,7 +57,9 @@ State build_null_scatter(const Spacetime::SchwarzschildParameters& parameters,
     const double L = b * E;
     const double vt = E / f;
     const double sin_theta = std::sin(initial.theta0);
+    // U^θ = 0. U^φ = L/(r² sinθ) (L/r² on the equator). Pole → U^φ = 0.
     const double vph = (sin_theta != 0.0) ? (L / (r0 * r0 * sin_theta)) : 0.0;
+    // Equatorial null radial equation: (U^r)² = E² − f L²/r². Inward branch.
     const double inside_vr = E * E - f * (L * L / (r0 * r0));
     if (inside_vr < 0.0) {
         throw std::runtime_error("NullScatter: impact parameter yields imaginary radial velocity");
@@ -76,6 +81,7 @@ State build_custom(const Spacetime::SchwarzschildParameters& parameters,
 
     if (vt == 0.0) {
         const double sin_theta = std::sin(initial.theta0);
+        // Null: U^t = sqrt(spatial/f). Timelike: sqrt((1+spatial)/f), clamped.
         if (geodesic == GeodesicKind::Null) {
             const double term_r = (initial.vr * initial.vr) / f;
             const double term_theta = r0 * r0 * initial.vtheta * initial.vtheta;

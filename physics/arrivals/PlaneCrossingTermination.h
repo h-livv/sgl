@@ -6,12 +6,13 @@
 
 namespace Arrivals {
 
-// Terminates when the ray reaches or passes the observer plane, or when the
-// fallback policy fires (horizon capture, escape radius, and so on).
+// Stops geodesic integration at the observer plane (or fallback).
+// Fallback (horizon / escape) is tested first; then signed_distance(world_pos) >= 0.
+// The plane is infinite: this is a crossing test, not an observer-hit test.
 // Stateless and const: one instance is safely shared by every ray in an ensemble.
 class PlaneCrossingTermination : public Propagation::TerminationPolicy {
 public:
-    // fallback must outlive this object.
+    // fallback is stored by reference and must outlive this object.
     PlaneCrossingTermination(const Geometry::Lens& lens, const Geometry::ImagePlane& plane,
                              const Propagation::TerminationPolicy& fallback);
 

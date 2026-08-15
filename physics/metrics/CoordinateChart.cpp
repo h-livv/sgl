@@ -5,6 +5,8 @@
 namespace CoordinateChart {
 
 Eigen::Matrix4d sph_to_cart_Jacobian(double r, double theta, double phi) {
+    // ∂(t,x,y,z)/∂(t,r,θ,φ). Maps spherical U to chart-Cartesian U: U_cart = J U_sph.
+    // t is invariant. Spatial block is the usual spherical-coordinate differential.
     Eigen::Matrix4d J = Eigen::Matrix4d::Zero();
     J(0, 0) = 1.0;
 
@@ -23,6 +25,7 @@ Eigen::Matrix4d sph_to_cart_Jacobian(double r, double theta, double phi) {
 }
 
 Eigen::Matrix4d cart_to_sph_Jacobian(double r, double theta, double phi) {
+    // Inverse map U_sph = J^{-1} U_cart. Singular at r = 0 and on the polar axis (sinθ = 0).
     return sph_to_cart_Jacobian(r, theta, phi).inverse();
 }
 
@@ -33,13 +36,15 @@ State cart_to_sphere(const State& cartState) {
     double z = cartState.X[3];
 
     double r = std::sqrt(x * x + y * y + z * z);
-    double phi = std::atan2(y, x);
+    double phi = std::atan2(y, x); // full-range azimuth, including the negative-x half-plane
+    // 1e-8 floor keeps z/r defined at the origin; clamp keeps acos in [-1, 1].
     double theta = std::acos(std::clamp(z / (r + 1e-8), -1.0, 1.0));
 
     return State(Eigen::Vector4d(t, r, theta, phi), cart_to_sph_Jacobian(r, theta, phi) * cartState.U);
 }
 
 State sph_to_cart(State& sphState) {
+    // Reads sphState; does not write it (non-const signature is unused).
     double t = sphState.X[0];
     double r = sphState.X[1];
     double theta = sphState.X[2];

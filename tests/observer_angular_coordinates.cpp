@@ -8,6 +8,15 @@
 #include <cmath>
 #include <stdexcept>
 
+// Arrivals: observer-centered gnomonic coordinates and the angular ring fill.
+// Contract: (u,v) = (tan θ_right, tan θ_up) from incoming sky direction
+//           s = −normalize(world_direction); behind-camera and NoCrossing
+//           rejected; expand_angular_azimuthally copies signed ρ; 
+//           fill_aligned_observer_ring expands only when d == 0.0 exactly.
+// Pipeline: arrivals → imaging observable. Distinct from spatial expand_azimuthally.
+// Caveat: `observer_distance` here is the transverse offset d, not the
+//         lens–observer length D.
+
 namespace {
 
 Arrivals::RayArrival make_arrival(const Eigen::Vector3d& world_direction) {
@@ -32,6 +41,7 @@ int main() {
     CHECK_CLOSE(central->y(), 0.0, 1e-15, "central v");
 
     constexpr double rho = 0.1;
+    // Arrival 4-velocity is opposite the view ray: s = −Û so gnomonic u equals ρ.
     const Eigen::Vector3d view_right =
         (observer.forward() + rho * observer.right()).normalized();
     const auto right =
@@ -77,6 +87,7 @@ int main() {
 
     const std::vector<Eigen::Vector2d> two_hits = {Eigen::Vector2d(0.3, 0.0),
                                                    Eigen::Vector2d(-0.3, 0.0)};
+    // d == 0.0: replace isolated hits by a symmetry ring. d != 0.0: leave them.
     const std::vector<Eigen::Vector2d> on_axis =
         Arrivals::fill_aligned_observer_ring(two_hits, 0.0, 8);
     CHECK(on_axis.size() == 8, "on-axis fill uses azimuth_count");

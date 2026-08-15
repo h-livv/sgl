@@ -9,6 +9,7 @@ namespace Rays {
 
 // Owns its rays by value. Sole authority for ray ids.
 // Invariant: for all i, rays()[i].id == i.
+// Sampler output / propagator input: RayOutcomes[i] is aligned with at(i).
 class RayEnsemble {
 public:
     RayEnsemble() = default;
@@ -19,6 +20,7 @@ public:
 
     // Throws std::out_of_range if index >= size().
     const Ray& at(std::size_t index) const;
+    // Replaces the launch state; id is unchanged (used by Newton refinement).
     void set_initial_state(std::size_t index, const State& initial_state);
 
     std::size_t size() const { return rays_.size(); }

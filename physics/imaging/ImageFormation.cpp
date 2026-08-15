@@ -11,7 +11,7 @@ std::optional<std::pair<std::size_t, std::size_t>> pixel_for(const Image& image,
     const double v = plane_position.y();
 
     if (u < image.u_min() || u >= image.u_max()) {
-        return std::nullopt;
+        return std::nullopt;  // half-open: u_max is out
     }
     if (v < image.v_min() || v >= image.v_max()) {
         return std::nullopt;
@@ -29,7 +29,7 @@ void accumulate(Image& image, const Eigen::Vector2d& image_position) {
     if (!pixel.has_value()) {
         return;
     }
-    image.at(pixel->first, pixel->second) += 1.0;
+    image.at(pixel->first, pixel->second) += 1.0;  // one count; not flux or magnification
 }
 
 void accumulate(Image& image, const std::vector<Eigen::Vector2d>& image_positions) {
@@ -50,7 +50,7 @@ void accumulate(Image& image, const std::vector<Arrivals::PlaneArrival>& arrival
 
 Image form_image(const std::vector<Eigen::Vector2d>& image_positions, std::size_t width,
                  std::size_t height, double coordinate_extent) {
-    const double half_extent = 0.5 * coordinate_extent;
+    const double half_extent = 0.5 * coordinate_extent;  // square ±extent/2 window
     Image image(width, height, -half_extent, half_extent, -half_extent, half_extent);
     accumulate(image, image_positions);
     return image;
@@ -88,7 +88,7 @@ double covering_extent(const std::vector<Eigen::Vector2d>& image_positions,
         return requested_extent;
     }
 
-    constexpr double kMargin = 1.1;
+    constexpr double kMargin = 1.1;  // grow so the half-open max edge is not occupied
     return 2.0 * max_abs * kMargin;
 }
 

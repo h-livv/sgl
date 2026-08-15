@@ -8,13 +8,21 @@
 #include <cmath>
 #include <limits>
 
+// Experiment-level: off-axis Newton hits land on the displaced observer.
+// Contract: 5×5 search finds ≥ 2 Schwarzschild images; each arrival is on the
+//           observer plane AND at the observer point (residual origin);
+//           fill_aligned_observer_ring with d ≠ 0 does not azimuthally copy.
+// Pipeline: experiment-level true 2D. This binary IS in default CTest (cheap 5×5).
+// Caveat: coarser than true_2d_off_axis_validation.cpp (21×21, not in CTest).
+//         ≥ 2 images is the Schwarzschild two-image expectation, not a ring.
+
 int main() {
     constexpr double angular_extent = 0.8;
     constexpr double source_distance = 30.0;
     constexpr double observer_axial_distance = 30.0;
-    constexpr double observer_transverse_u = 1.0;
+    constexpr double observer_transverse_u = 1.0;  // d ≠ 0: no azimuthal ring fill
     constexpr double b_max = 20.0;
-    constexpr int samples_per_axis = 5;
+    constexpr int samples_per_axis = 5;  // cheap CTest grid; heavy 21×21 is not in CTest
     constexpr double step_size = 0.01;
     constexpr int max_steps = 300000;
     constexpr std::size_t resolution = 64;
@@ -63,6 +71,7 @@ int main() {
         CHECK(std::isfinite(sample.b_u) && std::isfinite(sample.b_v), "launch parameters finite");
     }
 
+    // d != 0.0: fill_aligned_observer_ring must return the hits unchanged (720 is ignored).
     const std::vector<Eigen::Vector2d> image_samples = Arrivals::fill_aligned_observer_ring(
         result.angular_coordinates, observer_transverse_u, 720);
     CHECK(image_samples.size() == result.angular_coordinates.size(),
